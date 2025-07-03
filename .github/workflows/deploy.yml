@@ -1,0 +1,24 @@
+    name: Deploy Supabase Edge Function
+
+    on:
+      push:
+        branches:
+          - main # mainブランチにコードが追加されたら実行
+      workflow_dispatch:
+
+    jobs:
+      deploy:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v3
+
+          - uses: supabase/setup-cli@v1
+            with:
+              version: latest
+
+          - name: Deploy Edge Function
+            run: |
+              supabase functions deploy --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+            env:
+              SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+              
