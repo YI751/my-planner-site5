@@ -1,0 +1,14 @@
+# Netlifyのビルド設定
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+# Netlifyの関数に関する設定
+[functions]
+  node_bundler = "esbuild"
+  # 個別の関数の設定
+  [functions."*"]
+    node_version = 20
+    # 関数のタイムアウトを25秒に設定します。
+    # ※注意: 無料プランでは同期的関数は10秒でタイムアウトするため、この設定が完全に有効になるのはProプラン以上です。
+    timeout = 25

@@ -1,0 +1,29 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>認証中...</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <p>認証情報を処理しています。リダイレクトしない場合は、ページを再読み込みしてください。</p>
+    <script>
+        // お客様のSupabaseプロジェクト情報
+        const supabaseUrl = 'https://lltqbacrgrwcrkguiktf.supabase.co';
+        const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxsdHFiYWNyZ3J3Y3JrZ3Vpa3RmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE1NTg4MjgsImV4cCI6MjA2NzEzNDgyOH0.Y6OCU7Z-SIO1G2k-EcBKd2vlp8uiqHFHBYxRSsLs52o';
+
+        const supabaseClient = supabase.createClient(supabaseUrl, supabaseAnonKey);
+
+        // onAuthStateChangeは、認証状態が変化したときに一度だけ呼び出される
+        // メールリンクから戻ってきたとき、URLの#以降のトークンを処理してセッションを確立する
+        supabaseClient.auth.onAuthStateChange((event, session) => {
+            // セッションが確立されたら（ログインが成功したら）
+            if (session) {
+                // メインページにリダイレクトする
+                window.location.href = '/';
+            }
+        });
+    </script>
+</body>
+</html>
