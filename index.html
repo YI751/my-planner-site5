@@ -1,0 +1,1576 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>【AI機能搭載】インタラクティブWeb広告予算プランナー</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        body { font-family: 'Noto Sans JP', sans-serif; background-color: #F8F9FA; }
+        .tab-active { border-bottom-color: #0d9488; color: #0d9488; font-weight: 600; }
+        .tab-inactive { border-bottom-color: transparent; color: #6b7280; }
+        .nav-active { background-color: #14b8a6; color: white; }
+        .nav-inactive { background-color: white; color: #374151; }
+        .sim-mode-btn-active { background-color: #0d9488; color: white; }
+        .sim-mode-btn-inactive { background-color: #f3f4f6; color: #374151; }
+        .optional-input-btn-active { background-color: #14b8a6; color: white; }
+        .optional-input-btn-inactive { background-color: #e5e7eb; color: #4b5563; }
+        .case-study-card { transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out; }
+        .case-study-card:hover { transform: translateY(-5px); box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); }
+        .accordion-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; }
+        .chart-container { position: relative; width: 100%; max-width: 800px; margin-left: auto; margin-right: auto; height: 320px; }
+        @media (min-width: 768px) { .chart-container { height: 400px; } }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #0d9488; border-radius: 50%; width: 32px; height: 32px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .knowledge-card .formula { @apply bg-teal-50 border border-teal-200 text-teal-800 p-3 rounded-lg text-center text-base font-bold font-mono shadow-sm whitespace-nowrap overflow-x-auto; }
+        .input-group, .optional-group { transition: opacity 0.3s ease-in-out; }
+        .info-icon { cursor: pointer; color: #9ca3af; transition: color 0.2s; }
+        .info-icon:hover { color: #1f2937; }
+        #tooltip { position: absolute; background-color: #1f2937; color: white; padding: 12px; border-radius: 8px; width: 280px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 100; opacity: 0; visibility: hidden; transition: opacity 0.2s, visibility 0.2s; }
+        #tooltip.visible { opacity: 1; visibility: visible; }
+        #tooltip h4 { font-weight: bold; font-size: 1rem; margin-bottom: 8px; }
+        #tooltip p { font-size: 0.875rem; line-height: 1.5; }
+        #tooltip .formula { background-color: #374151; padding: 8px; border-radius: 4px; font-family: monospace; font-size: 0.8rem; margin-top: 8px; word-break: break-all; }
+        .custom-input { border: none; border-bottom: 1px solid #d1d5db; border-radius: 0; padding-left: 0; padding-right: 2.5rem; background-color: transparent; }
+        .custom-input:focus { --tw-ring-shadow: none !important; box-shadow: none !important; border-bottom-color: #0d9488; outline: none; }
+        .input-wrapper { position: relative; }
+        .input-unit { position: absolute; right: 0; bottom: 8px; color: #6b7280; pointer-events: none; }
+        .result-value { font-size: 1.5rem; font-weight: bold; word-break: break-all; line-height: 1.2; }
+        .auth-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #f9fafb;
+        }
+        .auth-card {
+            max-width: 420px;
+            width: 100%;
+            background-color: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <!-- ===== アプリケーション本体コンテナ ===== -->
+    <div id="app-container" class="hidden">
+        <div class="container mx-auto px-4 py-8">
+            <header class="text-center mb-8 flex justify-between items-center">
+                <div></div>
+                <div>
+                    <h1 class="text-4xl font-bold text-teal-700">インタラクティブWeb広告予算プランナー</h1>
+                    <p class="mt-2 text-lg text-gray-600">過去データがない状態から、論理的な広告予算と戦略を策定する</p>
+                </div>
+                <button id="logout-button" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded transition-colors">ログアウト</button>
+            </header>
+            
+            <nav class="bg-white rounded-lg shadow-md p-2 flex flex-wrap justify-center gap-2 mb-8">
+                <button data-section="simulator" class="nav-btn nav-active flex-grow sm:flex-grow-0 px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors">予算シミュレーター</button>
+                <button data-section="case-studies" class="nav-btn nav-inactive flex-grow sm:flex-grow-0 px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors">ケーススタディ</button>
+                <button data-section="knowledge" class="nav-btn nav-inactive flex-grow sm:flex-grow-0 px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors">用語・計算式リファレンス</button>
+                <button data-section="benchmarks" class="nav-btn nav-inactive flex-grow sm:flex-grow-0 px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors">業界ベンチマーク</button>
+                <button data-section="optimization" class="nav-btn nav-inactive flex-grow sm:flex-grow-0 px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors">最適化ガイド</button>
+            </nav>
+
+            <main>
+                <section id="simulator" class="content-section">
+                    <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg">
+                        <div class="text-center mb-6">
+                            <h2 class="text-2xl font-bold text-gray-800">予算シミュレーター</h2>
+                            <p class="text-gray-500 mt-1">状況に合わせて計算モードを選択し、広告予算や成果をシミュレーションします。</p>
+                        </div>
+                        <div class="mb-8 p-1 bg-gray-100 rounded-lg flex flex-col sm:flex-row gap-1 max-w-4xl mx-auto">
+                            <button data-mode="A" class="sim-mode-btn flex-1 py-2 px-4 rounded-md text-sm font-semibold transition-colors whitespace-nowrap">A: 目標利益から算出</button>
+                            <button data-mode="B" class="sim-mode-btn flex-1 py-2 px-4 rounded-md text-sm font-semibold transition-colors whitespace-nowrap">B: 目標売上から算出</button>
+                            <button data-mode="C" class="sim-mode-btn flex-1 py-2 px-4 rounded-md text-sm font-semibold transition-colors whitespace-nowrap">C: 予算から成果を予測</button>
+                            <button data-mode="D" class="sim-mode-btn flex-1 py-2 px-4 rounded-md text-sm font-semibold transition-colors whitespace-nowrap">D: KPI目標から逆算</button>
+                        </div>
+                        <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                            <div class="lg:col-span-3 space-y-8">
+                                <div class="space-y-6">
+                                    <div id="mode-A-inputs" class="input-group space-y-6">
+                                        <h3 class="text-lg font-semibold text-gray-800">モードA: 必須項目</h3>
+                                        <div class="input-wrapper"><label class="block text-sm font-medium text-gray-700">目標利益 (月)</label><input type="number" id="a-targetProfit" class="simulator-input custom-input mt-1 block w-full" placeholder="500000"><span class="input-unit">円</span></div>
+                                        <div class="input-wrapper"><label class="block text-sm font-medium text-gray-700">平均顧客単価 (LTV)</label><input type="number" id="a-avgCustomerValue" class="simulator-input custom-input mt-1 block w-full" placeholder="10000"><span class="input-unit">円</span></div>
+                                        <div>
+                                            <label for="a-cost-type" class="block text-sm font-medium text-gray-700">原価の入力方法</label>
+                                            <select id="a-cost-type" class="simulator-input mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500">
+                                                <option value="cogs">商品原価・変動費 (円)</option>
+                                                <option value="margin">原価率 (%)</option>
+                                            </select>
+                                        </div>
+                                        <div id="a-cogs-wrapper" class="input-wrapper"><label class="block text-sm font-medium text-gray-700">商品原価・変動費</label><input type="number" id="a-cogs" class="simulator-input custom-input mt-1 block w-full" placeholder="4000"><span class="input-unit">円</span></div>
+                                        <div id="a-margin-wrapper" class="hidden input-wrapper"><label class="block text-sm font-medium text-gray-700">原価率 (%)</label><input type="number" id="a-margin" class="simulator-input custom-input mt-1 block w-full" placeholder="40"><span class="input-unit">%</span></div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">目標CPAの算出方法を選択</label>
+                                            <div class="flex gap-2">
+                                                <button id="a-profit-btn" class="optional-input-btn flex-1 py-2 px-3 text-xs rounded-md">利益額で指定</button>
+                                                <button id="a-roas-btn" class="optional-input-btn flex-1 py-2 px-3 text-xs rounded-md">目標ROASで指定</button>
+                                                <button id="a-roi-btn" class="optional-input-btn flex-1 py-2 px-3 text-xs rounded-md">目標ROIで指定</button>
+                                            </div>
+                                        </div>
+                                        <div id="a-profit-wrapper" class="input-wrapper"><label class="block text-sm font-medium text-gray-700">確保したい利益/CV</label><input type="number" id="a-profitPerCv" class="simulator-input custom-input mt-1 block w-full" placeholder="2000"><span class="input-unit">円</span></div>
+                                        <div id="a-roas-wrapper" class="hidden input-wrapper"><label class="block text-sm font-medium text-gray-700">目標ROAS (%)</label><input type="number" id="a-targetRoas" class="simulator-input custom-input mt-1 block w-full" placeholder="500"><span class="input-unit">%</span></div>
+                                        <div id="a-roi-wrapper" class="hidden input-wrapper"><label class="block text-sm font-medium text-gray-700">目標ROI (%)</label><input type="number" id="a-targetRoi" class="simulator-input custom-input mt-1 block w-full" placeholder="100"><span class="input-unit">%</span></div>
+                                    </div>
+                                   <div id="mode-B-inputs" class="input-group hidden space-y-6">
+                                        <h3 class="text-lg font-semibold text-gray-800">モードB: 必須項目</h3>
+                                        <div class="input-wrapper"><label class="block text-sm font-medium text-gray-700">目標売上 (月)</label><input type="number" id="b-targetSales" class="simulator-input custom-input mt-1 block w-full" placeholder="3000000"><span class="input-unit">円</span></div>
+                                        <div class="input-wrapper"><label class="block text-sm font-medium text-gray-700">平均顧客単価</label><input type="number" id="b-avgCustomerValue" class="simulator-input custom-input mt-1 block w-full" placeholder="10000"><span class="input-unit">円</span></div>
+                                        <div>
+                                             <label for="b-cost-type" class="block text-sm font-medium text-gray-700">原価の入力方法</label>
+                                            <select id="b-cost-type" class="simulator-input mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500">
+                                                <option value="cogs">商品原価・変動費 (円)</option>
+                                                <option value="margin">原価率 (%)</option>
+                                            </select>
+                                        </div>
+                                        <div id="b-cogs-wrapper" class="input-wrapper"><label class="block text-sm font-medium text-gray-700">商品原価・変動費</label><input type="number" id="b-cogs" class="simulator-input custom-input mt-1 block w-full" placeholder="4000"><span class="input-unit">円</span></div>
+                                        <div id="b-margin-wrapper" class="hidden input-wrapper"><label class="block text-sm font-medium text-gray-700">原価率 (%)</label><input type="number" id="b-margin" class="simulator-input custom-input mt-1 block w-full" placeholder="40"><span class="input-unit">%</span></div>
+                                    </div>
+                                    <div id="mode-C-inputs" class="input-group hidden space-y-6">
+                                        <h3 class="text-lg font-semibold text-gray-800">モードC: 必須項目</h3>
+                                        <div class="input-wrapper"><label class="block text-sm font-medium text-gray-700">投下可能予算 (月)</label><input type="number" id="c-availableBudget" class="simulator-input custom-input mt-1 block w-full" placeholder="1000000"><span class="input-unit">円</span></div>
+                                        <div class="input-wrapper"><label class="block text-sm font-medium text-gray-700">平均顧客単価</label><input type="number" id="c-avgCustomerValue" class="simulator-input custom-input mt-1 block w-full" placeholder="10000"><span class="input-unit">円</span></div>
+                                        <div>
+                                            <label for="c-cost-type" class="block text-sm font-medium text-gray-700">原価の入力方法</label>
+                                            <select id="c-cost-type" class="simulator-input mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500">
+                                                <option value="cogs">商品原価・変動費 (円)</option>
+                                                <option value="margin">原価率 (%)</option>
+                                            </select>
+                                        </div>
+                                        <div id="c-cogs-wrapper" class="input-wrapper"><label class="block text-sm font-medium text-gray-700">商品原価・変動費</label><input type="number" id="c-cogs" class="simulator-input custom-input mt-1 block w-full" placeholder="4000"><span class="input-unit">円</span></div>
+                                        <div id="c-margin-wrapper" class="hidden input-wrapper"><label class="block text-sm font-medium text-gray-700">原価率 (%)</label><input type="number" id="c-margin" class="simulator-input custom-input mt-1 block w-full" placeholder="40"><span class="input-unit">%</span></div>
+                                    </div>
+                                     <div id="mode-D-inputs" class="input-group hidden space-y-6">
+                                        <h3 class="text-lg font-semibold text-gray-800">モードD: 必須項目</h3>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">シミュレーションの起点を選択</label>
+                                            <div class="flex flex-wrap gap-2">
+                                                <button id="d-cv-btn" class="optional-input-btn flex-1 py-2 px-3 text-xs rounded-md whitespace-nowrap">目標CV数から</button>
+                                                <button id="d-cpa-btn" class="optional-input-btn flex-1 py-2 px-3 text-xs rounded-md whitespace-nowrap">目標CPAから</button>
+                                                <button id="d-clicks-btn" class="optional-input-btn flex-1 py-2 px-3 text-xs rounded-md whitespace-nowrap">目標クリック数から</button>
+                                                <button id="d-imp-btn" class="optional-input-btn flex-1 py-2 px-3 text-xs rounded-md whitespace-nowrap">目標表示回数から</button>
+                                            </div>
+                                        </div>
+                                        <div id="d-cv-wrapper" class="input-wrapper">
+                                            <label class="block text-sm font-medium text-gray-700">目標CV数</label><input type="number" id="d-targetCv" class="simulator-input custom-input mt-1 block w-full" placeholder="100"><span class="input-unit">件</span>
+                                        </div>
+                                        <div id="d-cpa-wrapper" class="hidden space-y-6">
+                                              <div class="input-wrapper"><label class="block text-sm font-medium text-gray-700">目標CPA</label><input type="number" id="d-targetCpa" class="simulator-input custom-input mt-1 block w-full" placeholder="15000"><span class="input-unit">円</span></div>
+                                              <div class="input-wrapper"><label class="block text-sm font-medium text-gray-700">目標利益</label><input type="number" id="d-targetProfit" class="simulator-input custom-input mt-1 block w-full" placeholder="500000"><span class="input-unit">円</span></div>
+                                        </div>
+                                        <div id="d-clicks-wrapper" class="hidden input-wrapper">
+                                            <label class="block text-sm font-medium text-gray-700">目標クリック数</label>
+                                            <input type="number" id="d-targetClicks" class="simulator-input custom-input mt-1 block w-full" placeholder="1000"><span class="input-unit">回</span>
+                                        </div>
+                                        <div id="d-imp-wrapper" class="hidden input-wrapper">
+                                            <label class="block text-sm font-medium text-gray-700">目標表示回数</label>
+                                            <input type="number" id="d-targetImpressions" class="simulator-input custom-input mt-1 block w-full" placeholder="100000"><span class="input-unit">回</span>
+                                        </div>
+                                        <div class="input-wrapper"><label class="block text-sm font-medium text-gray-700">平均顧客単価 (LTV)</label><input type="number" id="d-avgCustomerValue" class="simulator-input custom-input mt-1 block w-full" placeholder="10000"><span class="input-unit">円</span></div>
+                                        <div>
+                                            <label for="d-cost-type" class="block text-sm font-medium text-gray-700">原価の入力方法</label>
+                                            <select id="d-cost-type" class="simulator-input mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500">
+                                                <option value="cogs">商品原価・変動費 (円)</option>
+                                                <option value="margin">原価率 (%)</option>
+                                            </select>
+                                        </div>
+                                        <div id="d-cogs-wrapper" class="input-wrapper"><label class="block text-sm font-medium text-gray-700">商品原価・変動費</label><input type="number" id="d-cogs" class="simulator-input custom-input mt-1 block w-full" placeholder="4000"><span class="input-unit">円</span></div>
+                                        <div id="d-margin-wrapper" class="hidden input-wrapper"><label class="block text-sm font-medium text-gray-700">原価率 (%)</label><input type="number" id="d-margin" class="simulator-input custom-input mt-1 block w-full" placeholder="40"><span class="input-unit">%</span></div>
+                                    </div>
+                                    <div class="pt-6 border-t">
+                                        <h3 class="text-lg font-semibold text-gray-700 mb-4">共通パフォーマンス予測</h3>
+                                        <div class="space-y-6">
+                                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-6">
+                                                <div class="input-wrapper"><label class="block text-sm font-medium text-gray-700">推定CTR (%)</label><input type="number" id="common-ctr" class="simulator-input custom-input mt-1 block w-full" placeholder="2.0" step="0.1"><span class="input-unit">%</span></div>
+                                                <div class="input-wrapper"><label class="block text-sm font-medium text-gray-700">推定CVR (%)</label><input type="number" id="common-cvr" class="simulator-input custom-input mt-1 block w-full" placeholder="1.0" step="0.1"><span class="input-unit">%</span></div>
+                                                <div class="input-wrapper"><label class="block text-sm font-medium text-gray-700">推定CPC (円)</label><input type="number" id="common-cpc" class="simulator-input custom-input mt-1 block w-full" placeholder="200"><span class="input-unit">円</span></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="lg:col-span-2">
+                                <div class="bg-teal-50/50 p-6 rounded-lg space-y-4 sticky top-8">
+                                    <h3 id="results-title" class="text-lg font-semibold text-center text-teal-800">シミュレーション結果</h3>
+                                    <div id="results-main" class="grid grid-cols-2 gap-4"></div>
+                                    <div id="results-scenario" class="pt-4"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-12">
+                           <div class="chart-container">
+                               <canvas id="budgetChart"></canvas>
+                           </div>
+                        </div>
+                        <div id="ai-section" class="mt-12 pt-8 border-t-2 border-teal-100">
+                             <div class="text-center mb-6">
+                                <h2 class="text-2xl font-bold text-gray-800 flex items-center justify-center gap-2">🤖 AIによるプランニングアシスト</h2>
+                                <p class="text-gray-500 mt-1">シミュレーション結果を基に、具体的な広告戦略をAIが提案します。</p>
+                            </div>
+                            <div class="max-w-3xl mx-auto bg-white p-6 rounded-lg shadow">
+                                <div>
+                                    <label for="productDescription" class="block text-sm font-medium text-gray-700">宣伝したい商品やサービスを具体的に入力してください</label>
+                                    <textarea id="productDescription" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500" placeholder="例: 東京・渋谷にある、初心者向けのパーソナルジム。完全個室で、一人ひとりに合わせたトレーニングプランを提供。"></textarea>
+                                </div>
+                                <div class="mt-4">
+                                    <label for="adUrl" class="block text-sm font-medium text-gray-700">広告で使用するURL <span class="text-xs text-gray-500">(任意)</span></label>
+                                    <input type="url" id="adUrl" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500" placeholder="https://example.com/product-page">
+                                    <p class="mt-1 text-xs text-gray-500">URLを入力すると、ページの内容を考慮した提案を生成します。</p>
+                                </div>
+                                <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <button id="generateTargetingBtn" class="sm:col-span-1 inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-base font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">ターゲティング案を生成 🎯</button>
+                                    <button id="generateCopyBtn" class="sm:col-span-1 inline-flex items-center justify-center px-4 py-2 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">広告コピーを生成 ✨</button>
+                                    <button id="generateKeywordsBtn" class="sm:col-span-1 inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-base font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">キーワードを生成 💡</button>
+                                </div>
+                            </div>
+                            <div id="aiResultContainer" class="mt-6 max-w-4xl mx-auto"></div>
+                        </div>
+                    </div>
+                </section>
+                <section id="case-studies" class="content-section hidden"><div class="bg-white p-6 rounded-xl shadow-lg"><div class="text-center mb-6"><h2 class="text-2xl font-bold text-gray-800">ケーススタディ</h2><p class="text-gray-500 mt-1">事例をクリックすると、シミュレーターにデータが読み込まれます。</p></div><div id="caseStudiesContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div></div></section>
+                <section id="knowledge" class="content-section hidden">
+                    <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg">
+                        <div class="text-center mb-8">
+                            <h2 class="text-3xl font-bold text-gray-800">用語・計算式リファレンス</h2>
+                            <p class="text-gray-500 mt-2">広告予算の策定に必要な主要な指標と計算式の一覧です。</p>
+                        </div>
+                        <div id="knowledge-container" class="space-y-8 max-w-6xl mx-auto">
+                        </div>
+                    </div>
+                </section>
+                <section id="benchmarks" class="content-section hidden"><div class="bg-white p-6 rounded-xl shadow-lg"><div class="text-center mb-6"><h2 class="text-2xl font-bold text-gray-800">業界ベンチマーク</h2><p class="text-gray-500 mt-1">各種広告プラットフォームの業界別パフォーマンス指標です。※各調査会社の公開データを基にした参考値です。</p></div><div><div class="border-b border-gray-200"><nav id="benchmarkTabs" class="-mb-px flex flex-wrap space-x-6" aria-label="Tabs"></nav></div><div id="benchmarkContent" class="mt-6"></div></div></div></section>
+                <section id="optimization" class="content-section hidden"><div class="bg-white p-6 rounded-xl shadow-lg"><div class="text-center mb-6"><h2 class="text-2xl font-bold text-gray-800">最適化ガイド</h2><p class="text-gray-500 mt-1">キャンペーン開始後によくある問題とその対処法。</p></div><div class="max-w-3xl mx-auto space-y-4" id="accordionContainer"></div></div></section>
+            </main>
+        </div>
+    </div>
+
+    <!-- ===== 認証フローコンテナ ===== -->
+    <div id="auth-container" class="hidden">
+
+        <!-- 1. ローディング画面 -->
+        <div id="loading-section" class="auth-container">
+            <div class="text-center">
+                <div class="loader mx-auto"></div>
+                <p class="mt-4 text-gray-600">状態を確認中...</p>
+            </div>
+        </div>
+
+        <!-- 2. ログイン/新規登録画面 -->
+        <div id="login-section" class="auth-container hidden">
+            <div class="auth-card text-center">
+                <h2 id="auth-title" class="text-2xl font-bold text-teal-700">ログイン</h2>
+                <p id="auth-subtitle" class="text-gray-600 mt-2 mb-6">ツールを利用するにはログインが必要です。</p>
+                <form id="login-form" class="space-y-4">
+                    <div>
+                        <input type="email" id="email-input" placeholder="メールアドレス" required class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-teal-500 focus:border-teal-500">
+                    </div>
+                    <div>
+                        <input type="password" id="password-input" placeholder="パスワード (6文字以上)" required class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-teal-500 focus:border-teal-500">
+                    </div>
+                    <button type="submit" id="auth-button" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-6 rounded-lg transition-colors">
+                        ログイン
+                    </button>
+                </form>
+                <div id="auth-error" class="hidden mt-4 text-red-600 text-sm"></div>
+                <div id="auth-success" class="hidden mt-4 text-green-700 text-sm"></div>
+                <p class="mt-6 text-sm text-gray-600">
+                    <span id="auth-prompt-text">アカウントをお持ちでないですか？</span>
+                    <a href="#" id="toggle-auth-mode" class="font-medium text-teal-600 hover:text-teal-500">新規登録</a>
+                </p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ツールチップ要素 -->
+    <div id="tooltip">
+        <h4 id="tooltip-title"></h4>
+        <p id="tooltip-desc"></p>
+        <div id="tooltip-formula" class="formula"></div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // ===== Element Selectors =====
+    const appContainer = document.getElementById('app-container');
+    const logoutButton = document.getElementById('logout-button');
+    const authContainer = document.getElementById('auth-container');
+    const loadingSection = document.getElementById('loading-section');
+    const loginSection = document.getElementById('login-section');
+    const loginForm = document.getElementById('login-form');
+    const emailInput = document.getElementById('email-input');
+    const passwordInput = document.getElementById('password-input');
+    const authTitle = document.getElementById('auth-title');
+    const authSubtitle = document.getElementById('auth-subtitle');
+    const authButton = document.getElementById('auth-button');
+    const authPromptText = document.getElementById('auth-prompt-text');
+    const toggleAuthModeLink = document.getElementById('toggle-auth-mode');
+    const authError = document.getElementById('auth-error');
+    const authSuccess = document.getElementById('auth-success');
+    
+    // ===== State Management =====
+    let plannerInitialized = false;
+    let isSignUpMode = false;
+
+    // ===== Supabase Client Initialization =====
+    const supabaseUrl = 'https://lltqbacrgrwcrkguiktf.supabase.co';
+    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxsdHFiYWNyZ3J3Y3JrZ3Vpa3RmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE1NTg4MjgsImV4cCI6MjA2NzEzNDgyOH0.Y6OCU7Z-SIO1G2k-EcBKd2vlp8uiqHFHBYxRSsLs52o';
+    const supabaseClient = supabase.createClient(supabaseUrl, supabaseAnonKey);
+
+    // ===== UI Update Function =====
+    const updateUI = (state) => {
+        console.log(`%c[UI Update] 画面を「${state}」に更新します。`, 'color: #28a745;');
+        authContainer.classList.add('hidden');
+        loadingSection.classList.add('hidden');
+        loginSection.classList.add('hidden');
+        appContainer.classList.add('hidden');
+        
+        switch (state) {
+            case 'LOADING':
+                authContainer.classList.remove('hidden');
+                loadingSection.classList.remove('hidden');
+                break;
+            case 'LOGIN':
+                authContainer.classList.remove('hidden');
+                loginSection.classList.remove('hidden');
+                break;
+            case 'APP':
+                appContainer.classList.remove('hidden');
+                if (!plannerInitialized) {
+                    initializePlanner();
+                    plannerInitialized = true;
+                }
+                break;
+        }
+    };
+
+    // ===== Authentication Logic (Simplified) =====
+    const checkAuthStatus = async () => {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (session) {
+            updateUI('APP');
+        } else {
+            updateUI('LOGIN');
+        }
+    };
+    
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        authError.textContent = '';
+        authError.classList.add('hidden');
+        authSuccess.textContent = '';
+        authSuccess.classList.add('hidden');
+        authButton.disabled = true;
+        authButton.textContent = isSignUpMode ? '登録中...' : 'ログイン中...';
+
+        const email = emailInput.value;
+        const password = passwordInput.value;
+
+        try {
+            if (isSignUpMode) {
+                const { error } = await supabaseClient.auth.signUp({ 
+                    email, 
+                    password, 
+                    options: { emailRedirectTo: `${window.location.origin}/auth-verify.html` }
+                });
+                if (error) throw error;
+                authSuccess.textContent = '確認メールを送信しました。メール内のリンクをクリックして登録を完了してください。';
+                authSuccess.classList.remove('hidden');
+            } else {
+                const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+                if (error) throw error;
+                // onAuthStateChange will handle the redirect to the app
+            }
+        } catch (error) {
+            console.error('[Auth エラー]:', error);
+            authError.textContent = `エラー: ${error.message}`;
+            authError.classList.remove('hidden');
+        } finally {
+            authButton.disabled = false;
+            authButton.textContent = isSignUpMode ? '新規登録' : 'ログイン';
+        }
+    });
+
+    // ===== Event Listeners for UI toggles and logout =====
+    toggleAuthModeLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        isSignUpMode = !isSignUpMode;
+        loginForm.reset();
+        authError.classList.add('hidden');
+        authSuccess.classList.add('hidden');
+        
+        authTitle.textContent = isSignUpMode ? '新規登録' : 'ログイン';
+        authSubtitle.textContent = isSignUpMode ? 'ツールを利用するには新規登録が必要です。' : 'ツールを利用するにはログインが必要です。';
+        authButton.textContent = isSignUpMode ? '新規登録' : 'ログイン';
+        authPromptText.textContent = isSignUpMode ? 'すでにアカウントをお持ちですか？' : 'アカウントをお持ちでないですか？';
+        toggleAuthModeLink.textContent = isSignUpMode ? 'ログイン' : '新規登録';
+    });
+
+    logoutButton.addEventListener('click', async () => {
+        await supabaseClient.auth.signOut();
+    });
+
+    supabaseClient.auth.onAuthStateChange((event, session) => {
+        console.log(`%c[onAuthStateChange] 認証イベント: ${event}`, 'background: #ffc107; color: black;');
+        checkAuthStatus();
+    });
+
+    // ===================================================================
+    // ===== APPLICATION CORE LOGIC (No changes below this line) =====
+    // ===================================================================
+    function initializePlanner() {
+        if (appContainer.classList.contains('hidden')) {
+            console.warn('%c[Initializer] initializePlannerが呼ばれましたが、appContainerが非表示のため処理を中断しました。', 'color: orange;');
+            return;
+        }
+        console.log('%c[Initializer] 開始: アプリケーションの初期化を開始します...', 'color: purple; font-weight: bold;');
+
+        const data = {
+            caseStudies: [
+                { id: 'fitness-24h', title: 'フィットネス', subtitle: '24時間営業ジム', targetProfit: 600000, avgCustomerValue: 38400, cogs: 10000, profitPerCv: 8000, ctr: 4.0, cvr: 3.5, cpc: 250, description: '駅近で便利な24時間営業フィットネスジム。最新マシン完備で、月額8,000円から利用可能。見学予約受付中。' },
+                { id: 'fitness-yoga', title: 'フィットネス', subtitle: '女性専用ホットヨガ', targetProfit: 450000, avgCustomerValue: 60000, cogs: 20000, profitPerCv: 15000, ctr: 3.0, cvr: 2.5, cpc: 180, description: '初心者歓迎の女性専用ホットヨガスタジオ。デトックスとリラックス効果で心も体も美しく。体験レッスン受付中。' },
+                { id: 'fitness-online', title: 'フィットネス', subtitle: 'オンラインパーソナル', targetProfit: 400000, avgCustomerValue: 25000, cogs: 5000, profitPerCv: 10000, ctr: 2.5, cvr: 2.0, cpc: 300, description: '自宅で受けられる本格的なオンラインパーソナルトレーニング。あなた専用のプログラムで理想の身体へ。無料カウンセリング実施中。' },
+                { id: 'tutor-elem', title: '学習塾', subtitle: '小学生向け集団指導', targetProfit: 500000, avgCustomerValue: 48000, cogs: 20000, profitPerCv: 10000, ctr: 2.0, cvr: 1.5, cpc: 300, description: '地域密着型の小学生向け学習塾。わかるまで徹底指導で、勉強が楽しくなる。まずは資料請求から。' },
+                { id: 'tutor-univ', title: '学習塾', subtitle: '大学受験予備校', targetProfit: 1350000, avgCustomerValue: 150000, cogs: 60000, profitPerCv: 45000, ctr: 3.0, cvr: 2.5, cpc: 550, description: '難関大学を目指す高校生のための大学受験予備校。プロ講師陣による質の高い授業と手厚いサポート。個別相談会を予約。' },
+                { id: 'tutor-prog', title: '学習塾', subtitle: 'プログラミングスクール', targetProfit: 1000000, avgCustomerValue: 60000, cogs: 10000, profitPerCv: 20000, ctr: 3.5, cvr: 3.0, cpc: 700, description: '未経験からITエンジニアへ。転職保証付きの社会人向けプログラミングスクール。まずは無料カウンセリングへ。' },
+                { id: 'buyback-brand', title: '買取サービス', subtitle: 'ブランド品宅配買取', targetProfit: 400000, avgCustomerValue: 9000, cogs: 0, profitPerCv: 4000, ctr: 6.0, cvr: 5.0, cpc: 400, description: '送料無料、手数料無料のブランド品宅配買取サービス。箱に詰めて送るだけで簡単査定。宅配キットを申し込む。' },
+                { id: 'buyback-car', title: '買取サービス', subtitle: '中古車一括査定', targetProfit: 1000000, avgCustomerValue: 5000, cogs: 0, profitPerCv: 2000, ctr: 10.0, cvr: 8.0, cpc: 200, description: '愛車の最高額がわかる！複数の買取業者に一括で査定を依頼できる無料サービス。' },
+                { id: 'buyback-book', title: '買取サービス', subtitle: '古本・ゲーム出張買取', targetProfit: 160000, avgCustomerValue: 3600, cogs: 0, profitPerCv: 1600, ctr: 5.0, cvr: 4.0, cpc: 80, description: '本・漫画・ゲーム、30点から無料で出張買取。玄関先で査定、その場で現金払い。' },
+                { id: 'real-estate', title: '不動産', subtitle: '賃貸仲介（問い合わせ）', targetProfit: 600000, avgCustomerValue: 30000, cogs: 0, profitPerCv: 15000, ctr: 3.0, cvr: 2.5, cpc: 300, description: '都心エリアの単身者向け賃貸物件を専門に扱う不動産仲介サービス。オンライン内見にも対応。' },
+                { id: 'real-estate-invest', title: '不動産', subtitle: '投資用物件（資料請求）', targetProfit: 2000000, avgCustomerValue: 10000, cogs: 0, profitPerCv: 5000, ctr: 5.0, cvr: 4.0, cpc: 300, description: '将来のための資産形成。都心の中古マンションを中心とした投資用不動産のご提案。まずは無料の資料請求から。' },
+                { id: 'real-estate-new', title: '不動産', subtitle: '新築戸建て（見学予約）', targetProfit: 1500000, avgCustomerValue: 50000, cogs: 0, profitPerCv: 25000, ctr: 2.0, cvr: 1.5, cpc: 650, description: '家族の夢を叶える、デザイン性の高い新築戸建て。週末の見学会を予約して、理想の住まいを体感してください。' },
+                { id: 'b2c-ec', title: 'B2C Eコマース', subtitle: 'ハンドメイドアクセサリー', targetProfit: 150000, avgCustomerValue: 6000, cogs: 1000, profitPerCv: 2000, ctr: 2.5, cvr: 2.0, cpc: 80, description: '20代女性向けの、高品質な天然石を使ったハンドメイドアクセサリーのオンラインストア。' },
+                { id: 'b2b-saas', title: 'B2B SaaS', subtitle: 'プロジェクト管理ソフト', targetProfit: 1080000, avgCustomerValue: 60000, cogs: 0, profitPerCv: 36000, ctr: 2.5, cvr: 2.0, cpc: 600, description: '中小企業・スタートアップ向けの直感的なプロジェクト管理SaaSツール。タスク管理、ガントチャート、チームコラボレーション機能を提供。' },
+                { id: 'high-ticket', title: '高価格帯B2C', subtitle: 'オンライン英会話', targetProfit: 1800000, avgCustomerValue: 24000, cogs: 0, profitPerCv: 12000, ctr: 3.5, cvr: 3.0, cpc: 350, description: 'ビジネスパーソン向けのマンツーマンオンライン英会話スクール。ネイティブ講師による高品質なレッスンが特徴。' }
+            ],
+            benchmarks: {
+                googleSearch: { 
+                    name: 'Google検索', 
+                    headers: ['業界', '平均CPC', '平均CVR (検索)', '平均CPA (検索)'], 
+                    rows: [ 
+                        ['BtoB', '450円 - 600円', '3.04%', '15,000円 - 20,000円'], 
+                        ['Eコマース', '150円 - 300円', '2.81%', '6,000円 - 9,000円'], 
+                        ['教育・学習', '250円 - 400円', '3.39%', '10,000円 - 15,000円'],
+                        ['金融・保険', '350円 - 800円', '5.10%', '8,000円 - 13,000円'], 
+                        ['健康・医療', '300円 - 500円', '3.36%', '9,000円 - 12,000円'],
+                        ['美容・フィットネス', '200円 - 450円', '3.80%', '7,000円 - 11,000円'],
+                        ['人材・採用', '400円 - 700円', '5.13%', '6,000円 - 9,000円'],
+                        ['不動産', '300円 - 700円', '2.47%', '15,000円 - 20,000円'],
+                        ['テクノロジー', '400円 - 650円', '2.92%', '14,000円 - 22,000円'],
+                        ['旅行・観光', '150円 - 300円', '4.68%', '5,000円 - 8,000円'],
+                    ] 
+                },
+                meta: { 
+                    name: 'Meta広告', 
+                    headers: ['業界', '平均CPC', '平均CVR', '平均CPA'], 
+                    rows: [ 
+                        ['アパレル・EC', '80円 - 200円', '4.11%', '1,200円 - 3,000円'], 
+                        ['美容・フィットネス', '100円 - 300円', '11.29%', '2,500円 - 5,000円'], 
+                        ['教育・学習', '150円 - 400円', '13.58%', '8,000円 - 15,000円'], 
+                        ['金融・保険', '300円 - 700円', '9.09%', '18,000円 - 25,000円'], 
+                        ['BtoB', '250円 - 500円', '10.63%', '10,000円 - 20,000円'], 
+                        ['不動産', '200円 - 600円', '10.67%', '10,000円 - 18,000円'], 
+                        ['医療・健康', '180円 - 450円', '11.00%', '7,000円 - 13,000円'],
+                        ['人材・採用', '150円 - 350円', '9.50%', '5,000円 - 10,000円'],
+                        ['旅行・観光', '70円 - 180円', '5.50%', '3,000円 - 6,000円'],
+                    ] 
+                },
+                x: { 
+                    name: 'X (旧Twitter)', 
+                    headers: ['指標', '平均値（目安）', '備考'], 
+                    rows: [
+                        ['CPC (クリック単価)', '40円 - 120円', 'キャンペーン目的により大きく変動'],
+                        ['CPM (インプレッション単価)', '600円 - 900円', 'ターゲティング精度で変動'],
+                        ['CPE (エンゲージメント単価)', '30円 - 70円', 'エンゲージメント目的の場合'],
+                        ['CVR (コンバージョン率)', '0.5% - 2.0%', '商品や訴求内容に大きく依存'],
+                        ['CPI (アプリインストール単価)', '150円 - 400円', 'アプリインストール広告の場合'],
+                    ]
+                },
+                tiktok: {
+                    name: 'TikTok広告',
+                    headers: ['指標', '平均値（目安）', '備考'],
+                    rows: [
+                        ['CPM (インプレッション単価)', '200円 - 800円', 'クリエイティブの質で大きく変動'],
+                        ['CPC (クリック単価)', '30円 - 100円', '若年層向け商材で効率が良い傾向'],
+                        ['CVR (コンバージョン率)', '0.5% - 3.0%', '動画の冒頭で興味を引くことが重要'],
+                        ['CPV (視聴単価)', '3円 - 10円', '動画視聴目的の場合'],
+                    ]
+                },
+                line: { 
+                    name: 'LINE広告', 
+                    headers: ['課金方式', '費用感の目安', '特徴'], 
+                    rows: [ 
+                        ['クリック課金 (CPC)', '30円～150円', 'ウェブサイトへの誘導に最適'], 
+                        ['インプレッション課金 (CPM)', '500円～1,200円', '幅広い認知獲得向け'], 
+                        ['友だち追加課金 (CPF)', '100円～300円', '見込み顧客リストの構築に最適'], 
+                    ] 
+                }
+            },
+            optimization: [
+                { title: '問題：CTR（クリック率）が低い', content: `<strong>原因：</strong>広告文がターゲットに響いていない、ターゲティングが広すぎる、広告と検索キーワードの関連性が低い、などが考えられます。<br><br><strong>解決策：</strong><br>1. <strong>A/Bテストの実施：</strong>広告の見出しや説明文を複数パターン用意し、どちらがより高いCTRを獲得できるかテストします。<br>2. <strong>キーワードの見直し：</strong>関連性の低い検索語句を除外キーワードとして設定し、マッチタイプをより具体的に絞り込みます。<br>3. <strong>広告表示オプションの活用：</strong>サイトリンクなどを追加し、広告の表示面積を広げ、より多くの情報を提供します。` },
+                { title: '問題：CVR（コンバージョン率）が低い', content: `<strong>原因：</strong>広告の訴求内容とランディングページ（LP）の内容が一致していない、LPのユーザー体験（UX）が悪い（フォームが複雑、表示速度が遅いなど）、CTA（行動喚起）が弱い、などが挙げられます。<br><br><strong>解決策：</strong><br>1. <strong>LPの最適化（LPO）：</strong>広告のメッセージとLPのファーストビューを一致させ、一貫性を保ちます。<br>2. <strong>入力フォームの最適化（EFO）：</strong>入力項目を最小限に減らし、ユーザーの負担を軽減します。<br>3. <strong>CTAの改善：</strong>「送信」ではなく、「無料で体験レッスンを予約する」など、ユーザーのメリットを具体的に示す文言に修正します。` },
+                { title: '問題：CPA（顧客獲得単価）が高い', content: `<strong>原因：</strong>CPAは <strong>CPC ÷ CVR</strong> で算出されるため、CPAが高いのは「CPCが高すぎる」か「CVRが低すぎる」、あるいはその両方が原因です。<br><br><strong>解決策：</strong><br>1. <strong>根本原因への対処：</strong>上記のCTR改善策（CPCに影響）とCVR改善策を徹底的に実行します。<br>2. <strong>品質スコアの向上：</strong>Google広告では、広告・キーワード・LPの関連性を高めることで品質スコアが向上し、結果としてCPCが低下する傾向があります。<br>3. <strong>配信の最適化：</strong>パフォーマンスが悪いキーワードやオーディエンスへの予算配分を減らし、逆にCPAが良好な領域に予算を集中させます。` }
+            ]
+        };
+        
+        const tooltipData = {
+            'limit-cpa': { title: '限界CPA', desc: '1CVあたりにかけられる広告費の上限額。これを超えると赤字になる損益分岐点です。', formula: '平均顧客単価 - 商品原価' },
+            'target-cpa': { title: '目標CPA', desc: '目標利益を確保するために、1CVあたりに許容される広告費。', formula: '限界CPA - 確保したい利益/CV<br>または<br>平均顧客単価 / (目標ROAS / 100)<br>または<br>限界CPA / ((目標ROI/100) + 1)' },
+            'allowable-cpa': { title: '許容CPA', desc: '売上目標を達成するために、1CVあたりに許容される広告費の上限額です。利益がゼロになる損益分岐点と同じです。', formula: '平均顧客単価 - 商品原価' },
+            'projected-roas-b': { title: '予測ROAS', desc: '目標売上を達成するために必要な広告予算を投下した際の、広告費用対効果(ROAS)の予測値です。', formula: '(目標売上 ÷ 必要広告予算) × 100' },
+            'required-cv': { title: '必要CV数', desc: '設定した目標（利益または売上）を達成するために必要なCVの件数です。', formula: '目標利益 ÷ (1CVあたりの利益)<br>または<br>目標売上 ÷ 平均顧客単価' },
+            'required-budget': { title: '必要広告予算', desc: '必要CV数を、予測パフォーマンス（CVR, CPC）で達成するために必要な広告費の総額です。', formula: '必要CV数 × 推定CPA' },
+            'estimated-cpa': { title: '推定CPA', desc: '入力された予測パフォーマンス（CVR, CPC）から算出される、現実的なCPAの見積もりです。', formula: '推定CPC ÷ (推定CVR / 100)' },
+            'projected-profit': { title: '予測利益', desc: 'シミュレーション上のパフォーマンス（推定CPA）で目標を達成した場合に見込まれる、最終的な利益額です。目標利益と異なる場合があります。', formula: '(限界CPA - 推定CPA) × 必要CV数' },
+            'projected-cv': { title: '予測CV数', desc: '投下可能予算で獲得が期待できるCVの件数です。', formula: '投下可能予算 ÷ 推定CPA' },
+            'projected-sales': { title: '予測売上', desc: '予測CV数から見込まれる売上額です。', formula: '予測CV数 × 平均顧客単価' },
+            'projected-roi': { title: '予測ROI (%)', desc: '投下した広告予算に対して、どれだけの利益が生まれるかの予測値（投資利益率）です。', formula: '(予測利益 ÷ 投下可能予算) × 100' },
+            'projected-impressions': { title: '予測表示回数', desc: '目標クリック数を達成するために、推定CTRを基に必要となる広告表示回数の予測値です。', formula: '目標クリック数 ÷ (推定CTR / 100)' },
+            'projected-clicks': { title: '予測クリック数', desc: '目標表示回数と推定CTRから予測されるクリック数です。', formula: '目標表示回数 × (推定CTR / 100)' },
+            'required-budget-d': { title: '必要広告予算', desc: '設定したKPI目標を達成するために必要な広告費の総額です。計算方法は選択した起点によって異なります。', formula: '' }, // 動的に設定するため空
+            'projected-cpa-d': { title: '予測CPA', desc: '算出された必要広告予算と、それによって見込まれる予測CV数から算出されるCPAの予測値です。', formula: '必要広告予算 ÷ 予測CV数' },
+            'projected-profit-d': { title: '予測利益', desc: 'シミュレーションの結果見込まれる最終的な利益額です。', formula: '予測売上 - (予測CV数 × 原価) - 必要広告予算' }
+        };
+
+        const navButtons = document.querySelectorAll('.nav-btn');
+        const contentSections = document.querySelectorAll('.content-section');
+        const simModeButtons = document.querySelectorAll('.sim-mode-btn');
+        const simulatorInputs = document.querySelectorAll('.simulator-input');
+        const generateCopyBtn = document.getElementById('generateCopyBtn');
+        const generateTargetingBtn = document.getElementById('generateTargetingBtn');
+        const generateKeywordsBtn = document.getElementById('generateKeywordsBtn');
+        const aiResultContainer = document.getElementById('aiResultContainer');
+        const productDescriptionInput = document.getElementById('productDescription');
+        const adUrlInput = document.getElementById('adUrl');
+        const resultsMain = document.getElementById('results-main');
+        const resultsScenario = document.getElementById('results-scenario');
+        const tooltip = document.getElementById('tooltip');
+        let budgetChart;
+        let currentMode = 'A';
+        let modeA_cpa_calc_method = 'profit';
+        let modeD_kpi_choice = 'cv'; // 'cv', 'cpa', 'clicks', 'imp' のいずれか
+
+        function formatCurrency(value) { return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(Math.round(value)); }
+        function formatNumber(value) { return new Intl.NumberFormat('ja-JP').format(Math.round(value)); }
+        function calculateAll() {
+            switch (currentMode) {
+                case 'A': calculateModeA(); break;
+                case 'B': calculateModeB(); break;
+                case 'C': calculateModeC(); break;
+                case 'D': calculateModeD(); break;
+            }
+        }
+        function createInfoIcon(metric) {
+            return `<span class="info-icon ml-1 inline-block align-middle" data-metric="${metric}">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-info-circle" viewBox="0 0 16 16">
+                            <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                            <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.064.293.006.399.287.47l.45.082.082-.38-.29-.071a.499.499 0 0 1-.316-.68l.738-3.468a.499.499 0 0 1 .47-.323c.09-.002.19.022.26.077a.45.45 0 0 1 .15.318l-.305.984h.898c.294 0 .469.176.469.469a.45.45 0 0 1-.15.318l-.305.984h.898c.294 0 .469.176.469.469a.45.45 0 0 1-.15.318l-.305.984h.898c.294 0 .469.176.469.469a.45.45 0 0 1-.15.318l-.305.984h.898c.294 0 .469.176.469.469a.45.45 0 0 1-.15.318l-.305.984H7.284l.29-.071a.499.499 0 0 1 .316-.68l-.738-3.468a.499.499 0 0 1-.47-.323c-.09.002-.19-.022-.26-.077a.45.45 0 0 1-.15-.318l.305-.984H4.93c-.294 0-.469-.176-.469-.469a.45.45 0 0 1 .15-.318l.305-.984H4.93c-.294 0-.469-.176-.469-.469a.45.45 0 0 1 .15-.318l.305-.984H4.93c-.294 0-.469-.176-.469-.469a.45.45 0 0 1 .15-.318l.305-.984H7.284l-.29.071a.499.499 0 0 1-.316.68l.738 3.468a.499.499 0 0 1 .47.323c.09-.002.19.022.26.077a.45.45 0 0 1 .15.318l.305.984h.898c.294 0 .469.176.469.469a.45.45 0 0 1-.15.318l-.305.984h.898c.294 0 .469.176.469.469a.45.45 0 0 1-.15.318l-.305.984h.898c.294 0 .469.176.469.469a.45.45 0 0 1-.15.318l-.305.984H8.93zM8 4.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+                    </svg>
+                </span>`;
+        }
+        function getCogs(prefix) {
+            const costTypeSelect = document.getElementById(`${prefix}-cost-type`);
+            if (!costTypeSelect) return 0;
+            const costType = costTypeSelect.value;
+            const avgCustomerValue = parseFloat(document.getElementById(`${prefix}-avgCustomerValue`).value) || 0;
+            if (costType === 'cogs') {
+                return parseFloat(document.getElementById(`${prefix}-cogs`).value) || 0;
+            } else {
+                const margin = parseFloat(document.getElementById(`${prefix}-margin`).value) || 0;
+                return avgCustomerValue * (margin / 100);
+            }
+        }
+        function renderResults(results, analysisHtml = '') {
+            const fullWidthItem = results.find(res => res.fullWidth);
+            const gridItems = results.filter(res => !res.fullWidth);
+            let html = gridItems.map(res => `
+                <div class="bg-white p-3 rounded-md shadow-sm text-center flex flex-col justify-center min-h-[90px]">
+                    <div class="text-sm text-gray-500 flex items-center justify-center">
+                        ${res.label}
+                        ${res.metric ? createInfoIcon(res.metric) : ''}
+                    </div>
+                    <p class="result-value ${res.color || 'text-gray-800'} mt-1">${res.value}</p>
+                </div>
+            `).join('');
+            if(fullWidthItem) {
+                html += `<div class="bg-white p-3 rounded-md shadow-sm text-center mt-4 col-span-2">
+                    <div class="text-sm text-gray-500 flex items-center justify-center">
+                        ${fullWidthItem.label}
+                        ${fullWidthItem.metric ? createInfoIcon(fullWidthItem.metric) : ''}
+                    </div>
+                    <p class="result-value ${fullWidthItem.color || 'text-gray-800'} mt-1">${fullWidthItem.value}</p>
+                </div>`;
+            }
+            html += analysisHtml;
+            resultsMain.innerHTML = html;
+        }
+
+        function calculateModeA() {
+            const targetProfit = parseFloat(document.getElementById('a-targetProfit').value) || 0;
+            const avgCustomerValue = parseFloat(document.getElementById('a-avgCustomerValue').value) || 0;
+            const cogs = getCogs('a');
+            const profitPerCvInput = document.getElementById('a-profitPerCv').value;
+            const profitPerCv = profitPerCvInput === '' ? NaN : parseFloat(profitPerCvInput);
+            const targetRoas = parseFloat(document.getElementById('a-targetRoas').value) || 0;
+            const targetRoi = parseFloat(document.getElementById('a-targetRoi').value) || 0;
+            const cvr = parseFloat(document.getElementById('common-cvr').value) || 0;
+            const cpc = parseFloat(document.getElementById('common-cpc').value) || 0;
+            
+            const limitCpa = avgCustomerValue - cogs;
+            let targetCpa = NaN;
+            let profitPerUnit = NaN;
+            let warningMessage = '';
+
+            if (modeA_cpa_calc_method === 'profit') {
+                targetCpa = isNaN(profitPerCv) ? NaN : limitCpa - profitPerCv;
+                profitPerUnit = profitPerCv;
+                if (!isNaN(profitPerCv) && profitPerCv <= 0 && targetProfit > 0) {
+                    warningMessage = `<div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 col-span-2 mt-2 rounded-r-lg" role="alert"><p class="font-bold">注意</p><p>「確保したい利益/CV」が0円以下に設定されているため、プラスの目標利益を達成することはできません。</p></div>`;
+                }
+            } else if (modeA_cpa_calc_method === 'roas') {
+                 if (targetRoas > 0) {
+                    targetCpa = avgCustomerValue / (targetRoas / 100);
+                    profitPerUnit = limitCpa - targetCpa;
+                    if (profitPerUnit <= 0 && targetProfit > 0) {
+                        const breakevenRoas = (avgCustomerValue > 0 && limitCpa > 0) ? (avgCustomerValue / limitCpa) * 100 : 0;
+                        warningMessage = `<div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 col-span-2 mt-2 rounded-r-lg" role="alert"><p class="font-bold">注意</p><p>目標ROASが低すぎるため利益が出ません。目標利益の達成は不可能です。</p><p class="text-sm mt-2">損益分岐ROAS (利益が0になるROAS) はおよそ <strong>${breakevenRoas.toFixed(1)}%</strong> です。</p></div>`;
+                    }
+                }
+            } else if (modeA_cpa_calc_method === 'roi') {
+                if (targetRoi > -100) {
+                    targetCpa = limitCpa / ((targetRoi / 100) + 1);
+                    profitPerUnit = limitCpa - targetCpa;
+                     if (profitPerUnit <= 0 && targetProfit > 0) {
+                        warningMessage = `<div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 col-span-2 mt-2 rounded-r-lg" role="alert"><p class="font-bold">注意</p><p>目標ROIが低すぎるため利益が出ません。目標利益の達成は不可能です。</p><p class="text-sm mt-2">損益分岐ROI (利益が0になるROI) は <strong>0%</strong> です。</p></div>`;
+                    }
+                }
+            }
+            
+            const requiredCv = (targetProfit > 0 && profitPerUnit > 0) ? Math.ceil(targetProfit / profitPerUnit) : 0;
+            const estimatedCpa = cvr > 0 ? cpc / (cvr / 100) : 0;
+            const requiredBudget = requiredCv * estimatedCpa;
+            const projectedProfit = (limitCpa - estimatedCpa) * requiredCv;
+
+            const resultsData = [
+                { label: '限界CPA', value: formatCurrency(Math.max(0, limitCpa)), color: 'text-red-600', metric: 'limit-cpa' },
+                { label: '目標CPA', value: !isFinite(targetCpa) || isNaN(targetCpa) ? formatCurrency(0) : formatCurrency(Math.max(0, targetCpa)), color: 'text-green-600', metric: 'target-cpa' },
+                { label: '推定CPA', value: formatCurrency(estimatedCpa), color: 'text-yellow-600', metric: 'estimated-cpa' },
+                { label: '必要CV数', value: `${formatNumber(requiredCv)}件`, color: 'text-blue-600', metric: 'required-cv' },
+                { label: '必要広告予算', value: formatCurrency(requiredBudget), color: 'text-teal-600', metric: 'required-budget' },
+                { label: '予測利益', value: formatCurrency(projectedProfit), color: 'text-purple-600', metric: 'projected-profit' },
+            ];
+            renderResults(resultsData, warningMessage);
+            renderScenarioSection({ baseValue: requiredCv, cvr, cpc, scenarioType: 'cvr', title: '必要広告予算', formatter: formatCurrency });
+        }
+
+        function calculateModeB() {
+            const targetSales = parseFloat(document.getElementById('b-targetSales').value) || 0;
+            const avgCustomerValue = parseFloat(document.getElementById('b-avgCustomerValue').value) || 0;
+            const cogs = getCogs('b');
+            const cvr = parseFloat(document.getElementById('common-cvr').value) || 0;
+            const cpc = parseFloat(document.getElementById('common-cpc').value) || 0;
+
+            const requiredCv = (targetSales > 0 && avgCustomerValue > 0) ? Math.ceil(targetSales / avgCustomerValue) : 0;
+            const estimatedCpa = cvr > 0 ? cpc / (cvr / 100) : 0;
+            const requiredBudget = requiredCv * estimatedCpa;
+            const allowableCpa = avgCustomerValue - cogs;
+            const projectedProfit = (targetSales - (cogs * requiredCv) - requiredBudget);
+            const projectedRoas = requiredBudget > 0 ? (targetSales / requiredBudget) * 100 : 0;
+
+            const resultsData = [
+                { label: '許容CPA', value: formatCurrency(Math.max(0, allowableCpa)), color: 'text-red-600', metric: 'allowable-cpa' },
+                { label: '予測ROAS', value: `${projectedRoas.toFixed(1)}%`, color: 'text-green-600', metric: 'projected-roas-b' },
+                { label: '推定CPA', value: formatCurrency(estimatedCpa), color: 'text-yellow-600', metric: 'estimated-cpa' },
+                { label: '必要CV数', value: `${formatNumber(requiredCv)}件`, color: 'text-blue-600', metric: 'required-cv' },
+                { label: '必要広告予算', value: formatCurrency(requiredBudget), color: 'text-teal-600', metric: 'required-budget' },
+                { label: '予測利益', value: formatCurrency(projectedProfit), color: 'text-purple-600', metric: 'projected-profit' },
+            ];
+            renderResults(resultsData);
+            renderScenarioSection({ baseValue: requiredCv, cvr, cpc, scenarioType: 'cvr', title: '必要広告予算', formatter: formatCurrency });
+        }
+
+        function calculateModeC() {
+            const availableBudget = parseFloat(document.getElementById('c-availableBudget').value) || 0;
+            const avgCustomerValue = parseFloat(document.getElementById('c-avgCustomerValue').value) || 0;
+            const cogs = getCogs('c');
+            const cvr = parseFloat(document.getElementById('common-cvr').value) || 0;
+            const cpc = parseFloat(document.getElementById('common-cpc').value) || 0;
+
+            const estimatedCpa = cvr > 0 ? cpc / (cvr / 100) : 0;
+            const projectedCv = estimatedCpa > 0 ? availableBudget / estimatedCpa : 0;
+            const projectedSales = projectedCv * avgCustomerValue;
+            const projectedProfit = projectedSales - (projectedCv * cogs) - availableBudget;
+            const projectedRoi = availableBudget > 0 ? (projectedProfit / availableBudget) * 100 : 0;
+
+            const resultsData = [
+                { label: '推定CPA', value: formatCurrency(estimatedCpa), color: 'text-yellow-600', metric: 'estimated-cpa' },
+                { label: '予測CV数', value: `${formatNumber(projectedCv)}件`, color: 'text-blue-600', metric: 'projected-cv' },
+                { label: '予測売上', value: formatCurrency(projectedSales), color: 'text-teal-600', metric: 'projected-sales' },
+                { label: '予測利益', value: formatCurrency(projectedProfit), color: 'text-purple-600', metric: 'projected-profit' },
+                { label: '予測ROI', value: `${projectedRoi.toFixed(1)}%`, color: 'text-indigo-600', metric: 'projected-roi', fullWidth: true },
+            ];
+            renderResults(resultsData);
+            renderScenarioSection({ baseValue: availableBudget, cvr, cpc, scenarioType: 'cvr', title: '予測コンバージョン数', formatter: formatNumber, unit: '件' });
+        }
+
+        function calculateModeD() {
+            const avgCustomerValue = parseFloat(document.getElementById('d-avgCustomerValue').value) || 0;
+            const cogs = getCogs('d');
+            const ctr = parseFloat(document.getElementById('common-ctr').value) || 0;
+            const cvr = parseFloat(document.getElementById('common-cvr').value) || 0;
+            const cpc = parseFloat(document.getElementById('common-cpc').value) || 0;
+            const estimatedCpa = cvr > 0 ? cpc / (cvr / 100) : 0;
+            
+            let resultsData = [];
+            let analysisHtml = '';
+            let scenarioOptions = {};
+
+            if (modeD_kpi_choice === 'cv') {
+                const targetCv = parseFloat(document.getElementById('d-targetCv').value) || 0;
+                const requiredBudget = targetCv * estimatedCpa;
+                const projectedSales = targetCv * avgCustomerValue;
+                const projectedProfit = projectedSales - (targetCv * cogs) - requiredBudget;
+                resultsData = [
+                    { label: '推定CPA', value: formatCurrency(estimatedCpa), color: 'text-yellow-600', metric: 'estimated-cpa' },
+                    { label: '必要広告予算', value: formatCurrency(requiredBudget), color: 'text-teal-600', metric: 'required-budget-d' },
+                    { label: '予測売上', value: formatCurrency(projectedSales), color: 'text-indigo-600', metric: 'projected-sales' },
+                    { label: '予測利益', value: formatCurrency(projectedProfit), color: 'text-purple-600', metric: 'projected-profit-d' },
+                ];
+                analysisHtml = `<div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 mt-4 rounded-r-lg text-sm col-span-2" role="alert"><p class="font-bold">計算の前提</p><p>この計算は、パフォーマンス予測（推定CPA: ${formatCurrency(estimatedCpa)}）を基に、目標CV数 ${formatNumber(targetCv)}件を達成するために必要な広告予算を算出しています。</p></div>`;
+                scenarioOptions = { baseValue: targetCv, cvr, cpc, scenarioType: 'cvr', title: '必要広告予算', formatter: formatCurrency };
+
+            } else if (modeD_kpi_choice === 'cpa') {
+                const targetCpa = parseFloat(document.getElementById('d-targetCpa').value) || 0;
+                const targetProfit = parseFloat(document.getElementById('d-targetProfit').value) || 0;
+                const profitPerCv = avgCustomerValue - cogs - targetCpa;
+                const requiredCv = (profitPerCv > 0 && targetProfit > 0) ? Math.ceil(targetProfit / profitPerCv) : 0;
+                const requiredBudget = requiredCv * targetCpa;
+                const projectedSales = requiredCv * avgCustomerValue;
+                resultsData = [
+                    { label: '1CVあたりの利益', value: formatCurrency(profitPerCv), color: 'text-indigo-600' },
+                    { label: '必要CV数', value: `${formatNumber(requiredCv)}件`, color: 'text-blue-600', metric: 'required-cv' },
+                    { label: '必要広告予算', value: formatCurrency(requiredBudget), color: 'text-teal-600', metric: 'required-budget-d' },
+                    { label: '予測売上', value: formatCurrency(projectedSales), color: 'text-purple-600', metric: 'projected-sales' },
+                ];
+                 analysisHtml = `<div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 mt-4 rounded-r-lg text-sm col-span-2" role="alert"><p class="font-bold">計算の前提</p><p>この計算は、設定した目標CPA（${formatCurrency(targetCpa)}）で目標利益（${formatCurrency(targetProfit)}）を達成するために必要なCV数と広告予算を算出しています。</p></div>`;
+                scenarioOptions = { baseValue: requiredCv, cvr, cpc, scenarioType: 'cvr', title: '必要広告予算', formatter: formatCurrency };
+
+            } else if (modeD_kpi_choice === 'clicks') {
+                const targetClicks = parseFloat(document.getElementById('d-targetClicks').value) || 0;
+                const requiredBudget = targetClicks * cpc;
+                const projectedImpressions = ctr > 0 ? targetClicks / (ctr / 100) : 0;
+                const projectedCv = cvr > 0 ? targetClicks * (cvr / 100) : 0;
+                const projectedCpa = projectedCv > 0 ? requiredBudget / projectedCv : 0;
+                const projectedSales = projectedCv * avgCustomerValue;
+                const projectedProfit = projectedSales - (projectedCv * cogs) - requiredBudget;
+                resultsData = [
+                    { label: '必要広告予算', value: formatCurrency(requiredBudget), color: 'text-teal-600', metric: 'required-budget-d' },
+                    { label: '予測表示回数', value: `${formatNumber(projectedImpressions)}回`, color: 'text-gray-600', metric: 'projected-impressions' },
+                    { label: '予測CV数', value: `${formatNumber(projectedCv)}件`, color: 'text-blue-600', metric: 'projected-cv' },
+                    { label: '予測CPA', value: formatCurrency(projectedCpa), color: 'text-yellow-600', metric: 'projected-cpa-d' },
+                    { label: '予測売上', value: formatCurrency(projectedSales), color: 'text-indigo-600', metric: 'projected-sales' },
+                    { label: '予測利益', value: formatCurrency(projectedProfit), color: 'text-purple-600', metric: 'projected-profit-d' },
+                ];
+                scenarioOptions = { baseValue: targetClicks, cpc, scenarioType: 'cpc', title: '必要広告予算', formatter: formatCurrency };
+
+            } else if (modeD_kpi_choice === 'imp') {
+                const targetImpressions = parseFloat(document.getElementById('d-targetImpressions').value) || 0;
+                const projectedClicks = ctr > 0 ? targetImpressions * (ctr / 100) : 0;
+                const requiredBudget = projectedClicks * cpc;
+                const projectedCv = cvr > 0 ? projectedClicks * (cvr / 100) : 0;
+                const projectedCpa = projectedCv > 0 ? requiredBudget / projectedCv : 0;
+                const projectedSales = projectedCv * avgCustomerValue;
+                const projectedProfit = projectedSales - (projectedCv * cogs) - requiredBudget;
+                resultsData = [
+                    { label: '必要広告予算', value: formatCurrency(requiredBudget), color: 'text-teal-600', metric: 'required-budget-d' },
+                    { label: '予測クリック数', value: `${formatNumber(projectedClicks)}回`, color: 'text-gray-600', metric: 'projected-clicks' },
+                    { label: '予測CV数', value: `${formatNumber(projectedCv)}件`, color: 'text-blue-600', metric: 'projected-cv' },
+                    { label: '予測CPA', value: formatCurrency(projectedCpa), color: 'text-yellow-600', metric: 'projected-cpa-d' },
+                    { label: '予測売上', value: formatCurrency(projectedSales), color: 'text-indigo-600', metric: 'projected-sales' },
+                    { label: '予測利益', value: formatCurrency(projectedProfit), color: 'text-purple-600', metric: 'projected-profit-d' },
+                ];
+                scenarioOptions = { baseValue: targetImpressions, ctr, cpc, scenarioType: 'ctr', title: '必要広告予算', formatter: formatCurrency };
+            }
+
+            renderResults(resultsData, analysisHtml);
+            renderScenarioSection(scenarioOptions);
+        }
+        
+        function renderScenarioSection(options) {
+            const { baseValue, cvr, cpc, ctr, scenarioType, title, formatter, unit = '' } = options;
+            if (!resultsScenario) return;
+
+            let valPessimistic, valRealistic, valOptimistic;
+            let scenarioLabel = '';
+            let pessimisticLabel, realisticLabel, optimisticLabel;
+
+            switch(scenarioType) {
+                case 'cvr':
+                    const pessimisticCvr = cvr > 0 ? cvr * 0.7 : 0;
+                    const optimisticCvr = cvr * 1.3;
+                    scenarioLabel = 'CVR';
+                    pessimisticLabel = `${pessimisticCvr.toFixed(1)}%`;
+                    realisticLabel = `${cvr.toFixed(1)}%`;
+                    optimisticLabel = `${optimisticCvr.toFixed(1)}%`;
+
+                    if (currentMode === 'C') { // 予算から成果を予測
+                        const getProjectedCv = (targetCvr) => (targetCvr > 0 && cpc > 0 && baseValue > 0) ? baseValue / (cpc / (targetCvr / 100)) : 0;
+                        valPessimistic = getProjectedCv(pessimisticCvr);
+                        valRealistic = getProjectedCv(cvr);
+                        valOptimistic = getProjectedCv(optimisticCvr);
+                    } else { // 目標から予算を予測
+                        const calculateBudgetForCvScenario = (targetCvr) => {
+                            if (targetCvr <= 0 || !isFinite(targetCvr) || cpc <= 0 || baseValue <= 0) return 0;
+                            const clicksNeeded = baseValue / (targetCvr / 100);
+                            return clicksNeeded * cpc;
+                        };
+                        valPessimistic = calculateBudgetForCvScenario(pessimisticCvr);
+                        valRealistic = calculateBudgetForCvScenario(cvr);
+                        valOptimistic = calculateBudgetForCvScenario(optimisticCvr);
+                    }
+                    break;
+
+                case 'cpc':
+                    const pessimisticCpc = cpc * 1.3; // 悪化
+                    const optimisticCpc = cpc * 0.7; // 改善
+                    scenarioLabel = 'CPC';
+                    pessimisticLabel = formatCurrency(pessimisticCpc);
+                    realisticLabel = formatCurrency(cpc);
+                    optimisticLabel = formatCurrency(optimisticCpc);
+                    
+                    valPessimistic = baseValue * pessimisticCpc;
+                    valRealistic = baseValue * cpc;
+                    valOptimistic = baseValue * optimisticCpc;
+                    break;
+
+                case 'ctr':
+                    const pessimisticCtr = ctr > 0 ? ctr * 0.7 : 0; // 悪化
+                    const optimisticCtr = ctr * 1.3; // 改善
+                    scenarioLabel = 'CTR';
+                    pessimisticLabel = `${pessimisticCtr.toFixed(1)}%`;
+                    realisticLabel = `${ctr.toFixed(1)}%`;
+                    optimisticLabel = `${optimisticCtr.toFixed(1)}%`;
+
+                    const calculateBudgetForCtrScenario = (targetCtr) => {
+                        if (targetCtr <= 0 || cpc <= 0 || baseValue <= 0) return 0;
+                        const clicks = baseValue * (targetCtr / 100);
+                        return clicks * cpc;
+                    };
+                    valPessimistic = calculateBudgetForCtrScenario(pessimisticCtr);
+                    valRealistic = calculateBudgetForCtrScenario(ctr);
+                    valOptimistic = calculateBudgetForCtrScenario(optimisticCtr);
+                    break;
+                
+                default:
+                    resultsScenario.innerHTML = '';
+                    return;
+            }
+            
+            resultsScenario.innerHTML = `
+                <h4 class="text-md font-semibold text-center text-teal-800 mb-2">シナリオ別 ${title} (${scenarioLabel}変動)</h4>
+                <div class="space-y-3">
+                    <div class="bg-red-100 p-3 rounded-md"><div class="flex justify-between items-center"><span class="font-medium text-red-800">悲観的 (${pessimisticLabel})</span><span class="font-bold text-lg text-red-800">${formatter(valPessimistic)}${unit}</span></div></div>
+                    <div class="bg-blue-100 p-3 rounded-md"><div class="flex justify-between items-center"><span class="font-medium text-blue-800">現実的 (${realisticLabel})</span><span class="font-bold text-lg text-blue-800">${formatter(valRealistic)}${unit}</span></div></div>
+                    <div class="bg-green-100 p-3 rounded-md"><div class="flex justify-between items-center"><span class="font-medium text-green-800">楽観的 (${optimisticLabel})</span><span class="font-bold text-lg text-green-800">${formatter(valOptimistic)}${unit}</span></div></div>
+                </div>`;
+            
+            updateChart(title, ['悲観的', '現実的', '楽観的'], [valPessimistic, valRealistic, valOptimistic], formatter, unit);
+        }
+
+        function updateChart(label, labels, data, formatter, unit = '') {
+            if (!budgetChart) return;
+            const allDataIsZeroOrInvalid = data.every(item => item === 0 || !isFinite(item));
+            if (allDataIsZeroOrInvalid) {
+                budgetChart.options.scales.y.max = 1;
+            } else {
+                delete budgetChart.options.scales.y.max;
+            }
+            budgetChart.data.datasets[0].label = label;
+            budgetChart.data.labels = labels;
+            budgetChart.data.datasets[0].data = data;
+            budgetChart.options.plugins.tooltip.callbacks.label = (context) => `${context.dataset.label}: ${formatter(context.raw)}${unit}`;
+            budgetChart.options.scales.y.ticks.callback = (value) => formatter(value);
+            budgetChart.update();
+        }
+        function initChart() {
+            const ctx = document.getElementById('budgetChart').getContext('2d');
+            budgetChart = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: [], datasets: [{ data: [], backgroundColor: ['rgba(239, 68, 68, 0.6)', 'rgba(59, 130, 246, 0.6)', 'rgba(34, 197, 94, 0.6)'], borderColor: ['rgba(239, 68, 68, 1)', 'rgba(59, 130, 246, 1)', 'rgba(34, 197, 94, 1)'], borderWidth: 1 }] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: {} },
+                        title: { display: true, text: 'シミュレーション結果の可視化', font: { size: 16 }, color: '#374151', padding: { bottom: 20 } }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {}
+                        }
+                    }
+                }
+            });
+        }
+        function setMode(mode) {
+            currentMode = mode;
+            simModeButtons.forEach(btn => {
+                btn.classList.toggle('sim-mode-btn-active', btn.dataset.mode === mode);
+                btn.classList.toggle('sim-mode-btn-inactive', btn.dataset.mode !== mode);
+            });
+            document.getElementById('mode-A-inputs').classList.toggle('hidden', mode !== 'A');
+            document.getElementById('mode-B-inputs').classList.toggle('hidden', mode !== 'B');
+            document.getElementById('mode-C-inputs').classList.toggle('hidden', mode !== 'C');
+            document.getElementById('mode-D-inputs').classList.toggle('hidden', mode !== 'D');
+            calculateAll();
+        }
+        simModeButtons.forEach(btn => btn.addEventListener('click', () => setMode(btn.dataset.mode)));
+        simulatorInputs.forEach(input => input.addEventListener('input', calculateAll));
+        
+        document.getElementById('a-profit-btn').addEventListener('click', () => {
+            modeA_cpa_calc_method = 'profit';
+            document.getElementById('a-profit-wrapper').classList.remove('hidden');
+            document.getElementById('a-roas-wrapper').classList.add('hidden');
+            document.getElementById('a-roi-wrapper').classList.add('hidden');
+            document.getElementById('a-profit-btn').classList.replace('optional-input-btn-inactive', 'optional-input-btn-active');
+            document.getElementById('a-roas-btn').classList.replace('optional-input-btn-active', 'optional-input-btn-inactive');
+            document.getElementById('a-roi-btn').classList.replace('optional-input-btn-active', 'optional-input-btn-inactive');
+            calculateAll();
+        });
+        document.getElementById('a-roas-btn').addEventListener('click', () => {
+            modeA_cpa_calc_method = 'roas';
+            document.getElementById('a-profit-wrapper').classList.add('hidden');
+            document.getElementById('a-roas-wrapper').classList.remove('hidden');
+            document.getElementById('a-roi-wrapper').classList.add('hidden');
+            document.getElementById('a-roas-btn').classList.replace('optional-input-btn-inactive', 'optional-input-btn-active');
+            document.getElementById('a-profit-btn').classList.replace('optional-input-btn-active', 'optional-input-btn-inactive');
+            document.getElementById('a-roi-btn').classList.replace('optional-input-btn-active', 'optional-input-btn-inactive');
+            calculateAll();
+        });
+        document.getElementById('a-roi-btn').addEventListener('click', () => {
+            modeA_cpa_calc_method = 'roi';
+            document.getElementById('a-profit-wrapper').classList.add('hidden');
+            document.getElementById('a-roas-wrapper').classList.add('hidden');
+            document.getElementById('a-roi-wrapper').classList.remove('hidden');
+            document.getElementById('a-roi-btn').classList.replace('optional-input-btn-inactive', 'optional-input-btn-active');
+            document.getElementById('a-profit-btn').classList.replace('optional-input-btn-active', 'optional-input-btn-inactive');
+            document.getElementById('a-roas-btn').classList.replace('optional-input-btn-active', 'optional-input-btn-inactive');
+            calculateAll();
+        });
+        
+        function setModeDSubMode(subMode) {
+            modeD_kpi_choice = subMode;
+            const buttons = {
+                cv: document.getElementById('d-cv-btn'),
+                cpa: document.getElementById('d-cpa-btn'),
+                clicks: document.getElementById('d-clicks-btn'),
+                imp: document.getElementById('d-imp-btn')
+            };
+            const wrappers = {
+                cv: document.getElementById('d-cv-wrapper'),
+                cpa: document.getElementById('d-cpa-wrapper'),
+                clicks: document.getElementById('d-clicks-wrapper'),
+                imp: document.getElementById('d-imp-wrapper')
+            };
+
+            for (const key in buttons) {
+                buttons[key].classList.toggle('optional-input-btn-active', key === subMode);
+                buttons[key].classList.toggle('optional-input-btn-inactive', key !== subMode);
+                wrappers[key].classList.toggle('hidden', key !== subMode);
+            }
+            calculateAll();
+        }
+
+        document.getElementById('d-cv-btn').addEventListener('click', () => setModeDSubMode('cv'));
+        document.getElementById('d-cpa-btn').addEventListener('click', () => setModeDSubMode('cpa'));
+        document.getElementById('d-clicks-btn').addEventListener('click', () => setModeDSubMode('clicks'));
+        document.getElementById('d-imp-btn').addEventListener('click', () => setModeDSubMode('imp'));
+
+        ['a', 'b', 'c', 'd'].forEach(prefix => {
+            const costTypeSelect = document.getElementById(`${prefix}-cost-type`);
+            if (costTypeSelect) {
+                costTypeSelect.addEventListener('change', (e) => {
+                    document.getElementById(`${prefix}-cogs-wrapper`).classList.toggle('hidden', e.target.value !== 'cogs');
+                    document.getElementById(`${prefix}-margin-wrapper`).classList.toggle('hidden', e.target.value !== 'margin');
+                    calculateAll();
+                });
+            }
+        });
+        function showSection(sectionId) {
+            contentSections.forEach(section => section.classList.toggle('hidden', section.id !== sectionId));
+            navButtons.forEach(button => {
+                const isActive = button.dataset.section === sectionId;
+                button.classList.toggle('nav-active', isActive);
+                button.classList.toggle('nav-inactive', !isActive);
+            });
+        }
+        navButtons.forEach(button => button.addEventListener('click', () => showSection(button.dataset.section)));
+        
+        function loadCaseStudy(caseId) {
+            const cs = data.caseStudies.find(c => c.id === caseId);
+            if (cs) {
+                const avgCustomerValue = cs.avgCustomerValue || 0;
+                const cogs = cs.cogs || 0;
+                const profitPerCv = cs.profitPerCv || 0;
+                const ctr = cs.ctr || 0;
+                const cvr = cs.cvr || 0;
+                const cpc = cs.cpc || 0;
+
+                const limitCpa = avgCustomerValue - cogs;
+                const targetCpaFromProfit = limitCpa - profitPerCv;
+                const targetRoas = targetCpaFromProfit > 0 ? (avgCustomerValue / targetCpaFromProfit) * 100 : 0;
+                const targetRoi = targetCpaFromProfit > 0 ? ((limitCpa - targetCpaFromProfit) / targetCpaFromProfit) * 100 : 0;
+                const requiredCv = (profitPerCv > 0 && cs.targetProfit > 0) ? Math.ceil(cs.targetProfit / profitPerCv) : 0;
+                const targetSales = requiredCv * avgCustomerValue;
+                const estimatedCpa = cvr > 0 ? cpc / (cvr / 100) : 0;
+                const requiredBudget = requiredCv * estimatedCpa;
+                const requiredClicks = cvr > 0 ? requiredCv / (cvr / 100) : 0;
+                const requiredImpressions = ctr > 0 ? requiredClicks / (ctr / 100) : 0;
+
+                document.getElementById('a-targetProfit').value = cs.targetProfit || '';
+                document.getElementById('a-avgCustomerValue').value = avgCustomerValue;
+                document.getElementById('a-cost-type').value = 'cogs';
+                document.getElementById('a-cogs').value = cogs;
+                document.getElementById('a-cogs-wrapper').classList.remove('hidden');
+                document.getElementById('a-margin-wrapper').classList.add('hidden');
+                document.getElementById('a-profitPerCv').value = profitPerCv;
+                document.getElementById('a-targetRoas').value = targetRoas.toFixed(1);
+                document.getElementById('a-targetRoi').value = targetRoi.toFixed(1);
+                document.getElementById('a-profit-btn').click();
+                
+                document.getElementById('common-ctr').value = ctr;
+                document.getElementById('common-cvr').value = cvr;
+                document.getElementById('common-cpc').value = cpc;
+                
+                productDescriptionInput.value = cs.description || '';
+                
+                document.getElementById('b-targetSales').value = Math.round(targetSales);
+                document.getElementById('b-avgCustomerValue').value = avgCustomerValue;
+                document.getElementById('b-cost-type').value = 'cogs';
+                document.getElementById('b-cogs').value = cogs;
+                document.getElementById('b-cogs-wrapper').classList.remove('hidden');
+                document.getElementById('b-margin-wrapper').classList.add('hidden');
+
+                document.getElementById('c-availableBudget').value = Math.round(requiredBudget);
+                document.getElementById('c-avgCustomerValue').value = avgCustomerValue;
+                document.getElementById('c-cost-type').value = 'cogs';
+                document.getElementById('c-cogs').value = cogs;
+                document.getElementById('c-cogs-wrapper').classList.remove('hidden');
+                document.getElementById('c-margin-wrapper').classList.add('hidden');
+
+                document.getElementById('d-avgCustomerValue').value = avgCustomerValue;
+                document.getElementById('d-cost-type').value = 'cogs';
+                document.getElementById('d-cogs').value = cogs;
+                document.getElementById('d-cogs-wrapper').classList.remove('hidden');
+                document.getElementById('d-margin-wrapper').classList.add('hidden');
+                document.getElementById('d-targetCv').value = requiredCv;
+                document.getElementById('d-targetCpa').value = Math.round(targetCpaFromProfit);
+                document.getElementById('d-targetProfit').value = cs.targetProfit || '';
+                document.getElementById('d-targetClicks').value = Math.round(requiredClicks);
+                document.getElementById('d-targetImpressions').value = Math.round(requiredImpressions);
+
+                calculateAll();
+                showSection('simulator');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+
+        function populateCaseStudies() {
+            const container = document.getElementById('caseStudiesContainer');
+            if(!container) return;
+            container.innerHTML = data.caseStudies.map(cs => `<div class="case-study-card bg-white border border-gray-200 rounded-lg p-6 cursor-pointer" data-case-id="${cs.id}"><h3 class="text-lg font-bold text-teal-700">${cs.title}</h3><p class="text-gray-500">${cs.subtitle}</p><button class="mt-4 w-full bg-teal-600 text-white py-2 rounded-md hover:bg-teal-700 transition-colors">この事例を読み込む</button></div>`).join('');
+            document.querySelectorAll('.case-study-card').forEach(card => card.addEventListener('click', () => loadCaseStudy(card.dataset.caseId)));
+        }
+        function populateBenchmarks() {
+            const tabsContainer = document.getElementById('benchmarkTabs');
+            const contentContainer = document.getElementById('benchmarkContent');
+            if(!tabsContainer || !contentContainer) return;
+            tabsContainer.innerHTML = Object.keys(data.benchmarks).map((key, index) => `<button data-benchmark-key="${key}" class="benchmark-tab py-3 px-1 border-b-2 text-sm font-medium ${index === 0 ? 'tab-active' : 'tab-inactive'}">${data.benchmarks[key].name}</button>`).join('');
+            function showBenchmarkContent(key) {
+                const benchmark = data.benchmarks[key];
+                contentContainer.innerHTML = `<div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>${benchmark.headers.map(h => `<th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${h}</th>`).join('')}</tr></thead><tbody class="bg-white divide-y divide-gray-200">${benchmark.rows.map(row => `<tr>${row.map(cell => `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+            }
+            document.querySelectorAll('.benchmark-tab').forEach(tab => {
+                tab.addEventListener('click', (e) => {
+                    document.querySelectorAll('.benchmark-tab').forEach(t => t.classList.replace('tab-active', 'tab-inactive'));
+                    e.target.classList.replace('tab-inactive', 'tab-active');
+                    showBenchmarkContent(e.target.dataset.benchmarkKey);
+                });
+            });
+            showBenchmarkContent(Object.keys(data.benchmarks)[0]);
+        }
+        function populateOptimizationGuide() {
+            const container = document.getElementById('accordionContainer');
+            if(!container) return;
+            container.innerHTML = data.optimization.map((item) => `<div class="border border-gray-200 rounded-lg"><button class="accordion-toggle w-full flex justify-between items-center p-4 text-left font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 focus:outline-none"><span>${item.title}</span><span class="transform transition-transform duration-300"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></span></button><div class="accordion-content"><div class="p-4 text-gray-600 bg-white">${item.content}</div></div></div>`).join('');
+            document.querySelectorAll('.accordion-toggle').forEach(button => button.addEventListener('click', () => {
+                const content = button.nextElementSibling;
+                const icon = button.querySelector('svg').parentElement;
+                if (content.style.maxHeight) {
+                    content.style.maxHeight = null;
+                    icon.style.transform = 'rotate(0deg)';
+                } else {
+                    document.querySelectorAll('.accordion-content').forEach(c => c.style.maxHeight = null);
+                    document.querySelectorAll('.accordion-toggle span.transform').forEach(i => i.style.transform = 'rotate(0deg)');
+                    content.style.maxHeight = content.scrollHeight + "px";
+                    icon.style.transform = 'rotate(180deg)';
+                }
+            }));
+        }
+        function populateKnowledge() {
+            const container = document.getElementById('knowledge-container');
+            if (!container) return;
+            const knowledgeData = [
+                { category: '基本指標', color: 'teal', items: [
+                    { term: 'IMP (Impression)', desc: '広告が表示された回数。すべての広告活動の基点となります。' },
+                    { term: 'CTR (クリック率)', desc: '広告が表示されたうち、クリックされた割合。広告クリエイティブやターゲットの魅力度を示します。', formula: 'CTR(%) = (クリック数 ÷ IMP) × 100' },
+                    { term: 'CV (コンバージョン)', desc: '広告主にとって価値のある、ユーザーの特定のアクション（例：商品購入、問い合わせ）。' },
+                    { term: 'CVR (コンバージョン率)', desc: '広告クリックのうち、CVに至った割合。LPの有効性を示す重要指標。', formula: 'CVR(%) = (CV数 ÷ クリック数) × 100' }
+                ]},
+                { category: 'コスト指標', color: 'sky', items: [
+                    { term: 'CPC (クリック単価)', desc: '広告が1回クリックされるたびに発生する費用。', formula: 'CPC = 広告費 ÷ クリック数' },
+                    { term: 'CPM (インプレッション単価)', desc: '広告が1000回表示されるたびにかかる費用。認知度向上の指標として用いられます。', formula: 'CPM = (広告費 ÷ IMP) × 1000' },
+                    { term: 'CPA (顧客獲得単価)', desc: '1件のCVを獲得するためにかかった費用。費用対効果の最重要指標の一つ。', formulas: ['CPA = 広告費 ÷ CV数', 'CPA = CPC ÷ CVR'] }
+                ]},
+                { category: '収益性指標', color: 'green', items: [
+                    { term: 'ROAS (広告費用対効果)', desc: '広告費に対してどれだけの売上が発生したかを示す指標。ECサイトで特に重要視されます。', formula: 'ROAS(%) = (売上 ÷ 広告費) × 100' },
+                    { term: 'ROI (投資利益率)', desc: '投下した広告費から、どれだけの利益が生まれたかを示す指標。より事業貢献度を測れます。', formula: 'ROI(%) = (利益 ÷ 広告費) × 100' },
+                    { term: '限界CPA', desc: '1CVあたりにかけられる広告費の上限額。これを超えると赤字になる損益分岐点。', formula: '限界CPA = 平均顧客単価 − 原価' },
+                    { term: '目標CPA', desc: '目標利益を確保するために、1CVあたりに許容される広告費。', formula: '目標CPA = 限界CPA − 確保したい利益' },
+                    { term: 'LTV (顧客生涯価値)', desc: '一人の顧客が取引期間全体でもたらす総利益。リピート商材で重要。', formula: 'LTV = 顧客単価 × 粗利率 × 購買頻度 × 契約期間' }
+                ]},
+                { category: '計画立案指標', color: 'purple', items: [
+                    { term: '必要CV数', desc: '設定した目標利益を達成するために必要なCVの件数。', formula: '必要CV数 = 目標利益 ÷ 1CVあたりの利益' },
+                    { term: '必要広告予算', desc: '算出された数値を基に、最終的に必要となる広告費用の総額。', formula: '必要広告予算 = 必要CV数 × 目標CPA' }
+                ]}
+            ];
+            let html = '';
+            knowledgeData.forEach(cat => {
+                html += `
+                    <div>
+                        <h3 class="text-2xl font-semibold text-${cat.color}-700 border-b-2 border-${cat.color}-200 pb-2 mb-4">${cat.category}</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            ${cat.items.map(item => `
+                                <div class="knowledge-card bg-white p-5 rounded-lg shadow-md border-l-4 border-${cat.color}-500">
+                                    <h3 class="text-xl font-bold text-gray-800 flex items-center gap-2">${item.term}</h3>
+                                    <p class="text-gray-600 mt-2 text-sm">${item.desc}</p>
+                                    ${item.formula ? `<div class="mt-4 space-y-2"><div class="formula">${item.formula}</div></div>` : ''}
+                                    ${item.formulas ? `<div class="mt-4 space-y-2">${item.formulas.map(f => `<div class="formula">${f}</div>`).join('')}</div>` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+        function showLoading(title) { aiResultContainer.innerHTML = `<div class="bg-gray-50 p-6 rounded-lg text-center"><h3 class="text-lg font-semibold text-teal-800 mb-4">${title}</h3><div class="flex justify-center items-center"><div class="loader"></div><p class="ml-4 text-gray-600">AIが生成中です。しばらくお待ちください...</p></div></div>`; }
+        function showError(message) { aiResultContainer.innerHTML = `<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg" role="alert"><strong class="font-bold">エラーが発生しました:</strong><span class="block sm:inline"> ${message}</span></div>`; }
+        async function callAIApi(payload) {
+            const response = await fetch('/.netlify/functions/callGemini', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`API error (${response.status}): ${errorText}`);
+            }
+            return response.json();
+        }
+        
+        async function handleAIGeneration(type) {
+            console.log(`%c[AI] AI生成ボタンがクリックされました。タイプ: ${type}`, 'color: green; font-weight: bold;');
+            const productDescription = productDescriptionInput.value.trim();
+            const adUrl = adUrlInput.value.trim();
+            if (!productDescription && !adUrl) {
+                console.log('%c[AI] バリデーション失敗: 商品説明・URLが未入力です。', 'color: red;');
+                showError("宣伝したい商品やサービス、または参考URLのいずれかを入力してください。");
+                return;
+            }
+            if (type === 'copy') {
+                await generateAdCopy(productDescription, adUrl);
+            } else if (type === 'targeting') {
+                await generateTargetingIdeas(productDescription, adUrl);
+            } else if (type === 'keywords') {
+                await generateKeywords(productDescription, adUrl);
+            }
+        }
+
+        async function generateAdCopy(productDescription, adUrl) {
+            showLoading("広告コピーを生成中...");
+            let prompt = `あなたは優秀なデジタルマーケティング担当者です。
+以下の情報に基づき、Google検索広告用の広告コピーを厳密に6パターン提案してください。
+
+# 指示
+- 各広告パターンには、必ず「見出し(headlines)」(30文字以内で3つ)と「説明文(descriptions)」(90文字以内で2つ)の両方を含めてください。
+- 出力は指定されたJSON形式に厳密に従ってください。
+
+# 提供情報`;
+            if (productDescription) { prompt += `\n## 商品・サービス概要\n${productDescription}`; }
+            if (adUrl) { prompt += `\n## 参考URL\n${adUrl}`; }
+            const payload = { 
+                contents: [{ role: "user", parts: [{ text: prompt }] }], 
+                generationConfig: { 
+                    responseMimeType: "application/json", 
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            ads: {
+                                type: "ARRAY",
+                                items: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        headlines: { type: "ARRAY", items: { type: "STRING" } },
+                                        descriptions: { type: "ARRAY", items: { type: "STRING" } }
+                                    },
+                                    required: ["headlines", "descriptions"]
+                                }
+                            }
+                        },
+                        required: ["ads"]
+                    }
+                } 
+            };
+            try {
+                const result = await callAIApi(payload);
+                if (result.candidates && result.candidates[0]?.content?.parts?.[0]) {
+                    const resultText = result.candidates[0].content.parts[0].text;
+                    const parsedResult = JSON.parse(resultText);
+                    displayAdCopy(parsedResult.ads);
+                } else {
+                    throw new Error("予期せぬAPIレスポンス形式です。");
+                }
+            } catch (e) { 
+                showError(e.message); 
+                console.error(e);
+            }
+        }
+        async function generateTargetingIdeas(productDescription, adUrl) {
+            showLoading("ターゲティング戦略を生成中...");
+            let prompt = `あなたは経験豊富なマーケティングストラテジストです。
+以下の情報に基づき、デジタル広告キャンペーンのターゲティング戦略を提案してください。
+
+# 指示
+- あなたの任務は、最もありきたりな提案を避け、この商品/サービスに特有の機会を捉える、最も洞察に満ちたユニークなプラットフォームの組み合わせを2つ提案することです。
+- 提案は必ず、1つは「基軸プラットフォーム」(Google広告またはMeta広告)から、もう1つは「拡張プラットフォーム」(X, LINE, TikTok, Yahoo!広告, SmartNews広告, Google Display & Video 360など)から選んでください。
+- 必ず指定されたJSON形式で出力してください。
+- 各項目は、簡潔かつ戦略的な要点に絞って記述してください。
+- ペルソナは2つ作成してください。
+
+# 提供情報`;
+            if (productDescription) { prompt += `\n## 商品・サービス概要\n${productDescription}`; }
+            if (adUrl) { prompt += `\n## 参考URL\n${adUrl}`; }
+            const payload = {
+                contents: [{ role: "user", parts: [{ text: prompt }] }],
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            overall_strategy: { type: "STRING", description: "キャンペーン全体の基本戦略を1〜2文で要約" },
+                            primary_persona: {
+                                type: "OBJECT",
+                                description: "最も優先すべきメインターゲット",
+                                properties: {
+                                    profile: { type: "STRING", description: "ターゲット像を一言で表現" },
+                                    lifestyle_context: { type: "STRING", description: "ペルソナの年齢や性別にも触れつつ、ライフスタイルや価値観を1文で表現" },
+                                    interests_and_needs: { type: "ARRAY", description: "具体的な興味・関心・ニーズを文章で厳密に2点記述", items: { type: "STRING" } },
+                                    info_sources: { type: "ARRAY", description: "主な情報源の具体例(2つ)", items: { type: "STRING" } }
+                                },
+                                 required: ["profile", "lifestyle_context", "interests_and_needs", "info_sources"]
+                            },
+                            secondary_persona: {
+                                type: "OBJECT",
+                                description: "次に狙うべきサブターゲット",
+                                properties: {
+                                    profile: { type: "STRING", description: "ターゲット像を一言で表現" },
+                                    lifestyle_context: { type: "STRING", description: "ペルソナの年齢や性別にも触れつつ、ライフスタイルや価値観を1文で表現" },
+                                    interests_and_needs: { type: "ARRAY", description: "具体的な興味・関心・ニーズを文章で厳密に2点記述", items: { type: "STRING" } },
+                                    info_sources: { type: "ARRAY", description: "主な情報源の具体例(2つ)", items: { type: "STRING" } }
+                                },
+                                 required: ["profile", "lifestyle_context", "interests_and_needs", "info_sources"]
+                            },
+                            platform_strategy: {
+                                type: "OBJECT",
+                                description: "基軸プラットフォームと拡張プラットフォームの組み合わせ",
+                                properties: {
+                                    mainstay_platform: {
+                                        type: "OBJECT",
+                                        description: "Google広告またはMeta広告から選択",
+                                         properties: {
+                                            platform_name: { type: "STRING" },
+                                            strategic_reason: { type: "STRING" },
+                                            approach_example: { type: "STRING" }
+                                        },
+                                        required: ["platform_name", "strategic_reason", "approach_example"]
+                                    },
+                                    alternative_platform: {
+                                        type: "OBJECT",
+                                        description: "Google/Meta以外の多様な広告媒体から選択",
+                                         properties: {
+                                            platform_name: { type: "STRING" },
+                                            strategic_reason: { type: "STRING" },
+                                            approach_example: { type: "STRING" }
+                                        },
+                                        required: ["platform_name", "strategic_reason", "approach_example"]
+                                    }
+                                },
+                                required: ["mainstay_platform", "alternative_platform"]
+                            }
+                        },
+                        required: ["overall_strategy", "primary_persona", "secondary_persona", "platform_strategy"]
+                    }
+                }
+            };
+            try {
+                const result = await callAIApi(payload);
+                if (result.candidates && result.candidates[0]?.content?.parts?.[0]) {
+                    const parsedResult = JSON.parse(result.candidates[0].content.parts[0].text);
+                    displayTargetingIdeas(parsedResult);
+                } else {
+                    throw new Error("予期せぬAPIレスポンス形式です。");
+                }
+            } catch (error) {
+                showError(error.message);
+                console.error(error);
+            }
+        }
+        async function generateKeywords(productDescription, adUrl) {
+            showLoading("キーワードを深掘り中...");
+            let prompt = `あなたは優秀な検索広告の専門家です。
+以下の情報に基づき、ユーザーの深いインサイトを突くような、質の高い検索キーワードを提案してください。
+
+# 指示
+- 以下の2つのカテゴリに分類し、それぞれ10個ずつキーワードを提案してください。
+  1. 詳細キーワード (10個): 3語以上で構成され、具体的なニーズを持つユーザーを狙うキーワード
+  2. インサイトキーワード (10個): ユーザーの悩みや願望、利用シーンに基づいた、より深いインサイトを突くキーワード
+- 出力は指定されたJSON形式に厳密に従ってください。
+
+# 提供情報`;
+            if (productDescription) { prompt += `\n## 商品・サービス概要\n${productDescription}`; }
+            if (adUrl) { prompt += `\n## 参考URL\n${adUrl}`; }
+            const payload = { 
+                contents: [{ role: "user", parts: [{ text: prompt }] }], 
+                generationConfig: { 
+                    responseMimeType: "application/json", 
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            long_tail_keywords: { 
+                                type: "ARRAY", 
+                                description: "詳細キーワード10個のリスト",
+                                items: { type: "STRING" } 
+                            },
+                            insight_keywords: { 
+                                type: "ARRAY", 
+                                description: "インサイトキーワード10個のリスト",
+                                items: { type: "STRING" } 
+                            }
+                        },
+                        required: ["long_tail_keywords", "insight_keywords"]
+                    }
+                } 
+            };
+            try {
+                const result = await callAIApi(payload);
+                if (result.candidates && result.candidates[0]?.content?.parts?.[0]) {
+                    const resultText = result.candidates[0].content.parts[0].text;
+                    const parsedResult = JSON.parse(resultText);
+                    displayKeywords(parsedResult);
+                } else {
+                    throw new Error("予期せぬAPIレスポンス形式です。");
+                }
+            } catch (e) { 
+                showError(e.message); 
+                console.error(e);
+            }
+        }
+        function displayAdCopy(ads) {
+            if (!ads || ads.length === 0) { 
+                showError("広告コピーを生成できませんでした。"); 
+                return; 
+            }
+            let html = '<div><h3 class="text-lg font-semibold text-teal-800 mb-4 text-center">AIが生成した広告コピー案</h3><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">';
+            ads.forEach((ad, index) => {
+                const headlinesHtml = (ad.headlines || []).map(h => `<li>${h}</li>`).join('');
+                const descriptionsHtml = (ad.descriptions || []).map(d => `<li>${d}</li>`).join('');
+                html += `<div class="bg-gray-50 border border-gray-200 rounded-lg p-4"><h4 class="font-bold mb-2 text-gray-700">パターン ${index + 1}</h4><div class="space-y-2"><div><p class="text-sm font-semibold text-teal-700">見出し:</p><ul class="list-disc list-inside text-gray-600 text-sm">${headlinesHtml}</ul></div><div><p class="text-sm font-semibold text-teal-700">説明文:</p><ul class="list-disc list-inside text-gray-600 text-sm">${descriptionsHtml}</ul></div></div></div>`;
+            });
+            aiResultContainer.innerHTML = html + '</div></div>';
+        }
+        function displayKeywords(data) {
+            if (!data) {
+                showError("キーワードを生成できませんでした。");
+                return;
+            }
+            let html = '<div class="space-y-8">';
+            const renderKeywords = (title, keywords) => {
+                if (!keywords || keywords.length === 0) return '';
+                return `<div class="flex-1 min-w-[280px]">
+                            <h4 class="font-semibold text-gray-700 text-lg mb-3">${title}</h4>
+                            <div class="flex flex-wrap gap-2">${keywords.map(kw => `<span class="bg-gray-200 text-gray-800 text-sm font-medium px-3 py-1 rounded-full">${kw}</span>`).join('')}</div>
+                        </div>`;
+            };
+            html += `<div class="pt-8">
+                        <h3 class="text-xl font-bold text-teal-800 mb-6 text-center">AIによるキーワード深掘り提案</h3>
+                        <div class="flex flex-col md:flex-row justify-center gap-8">
+                            ${renderKeywords('詳細キーワード (Long-tail)', data.long_tail_keywords)}
+                            ${renderKeywords('インサイトキーワード (Insight)', data.insight_keywords)}
+                        </div>
+                     </div>`;
+            aiResultContainer.innerHTML = html + '</div>';
+        }
+        function displayTargetingIdeas(data) {
+            if (!data) {
+                showError("ターゲティング案を生成できませんでした。");
+                return;
+            }
+            let html = '<div class="bg-white border border-gray-200 rounded-lg p-6 space-y-8">';
+            html += '<h3 class="text-xl font-bold text-teal-800 text-center">AIによるターゲティング戦略レポート</h3>';
+            if (data.overall_strategy) {
+                html += `
+                    <div>
+                        <h4 class="text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-teal-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            キャンペーンの基本方針
+                        </h4>
+                        <p class="bg-teal-50 border-l-4 border-teal-500 text-teal-800 p-4 rounded-r-lg">${data.overall_strategy}</p>
+                    </div>`;
+            }
+            const renderPersona = (persona, title) => {
+                if (!persona) return '';
+                let personaHtml = `<div class="border border-gray-200 rounded-lg p-4 space-y-4">
+                                    <h5 class="font-bold text-md text-gray-700">${title}</h5>
+                                    <p class="bg-gray-100 p-3 rounded-md font-semibold text-gray-800">🎯 ${persona.profile || ''}</p>
+                                    <div>
+                                        <h6 class="font-semibold text-sm text-gray-600">ライフスタイル背景</h6>
+                                        <p class="text-sm text-gray-700 mt-1">${persona.lifestyle_context || 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                        <h6 class="font-semibold text-sm text-gray-600">具体的な興味・関心・ニーズ</h6>
+                                        <ul class="list-disc list-inside text-sm text-gray-700 mt-1 pl-2 space-y-1">${(persona.interests_and_needs || []).map(item => `<li>${item}</li>`).join('')}</ul>
+                                    </div>
+                                    <div>
+                                        <h6 class="font-semibold text-sm text-gray-600">主な情報源</h6>
+                                        <div class="flex flex-wrap gap-2 mt-1">${(persona.info_sources || []).map(item => `<span class="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded-full">${item}</span>`).join('')}</div>
+                                    </div>
+                                   </div>`;
+                return personaHtml;
+            };
+            html += `<div>
+                        <h4 class="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-teal-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                            推奨ターゲット
+                        </h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            ${renderPersona(data.primary_persona, 'No.1 メインターゲット')}
+                            ${renderPersona(data.secondary_persona, 'No.2 サブターゲット')}
+                        </div>
+                     </div>`;
+        const renderPlatform = (platform) => {
+            if (!platform) return '';
+            return `<div class="bg-gray-50 p-4 rounded-lg border">
+                        <h5 class="font-bold text-md text-teal-700">${platform.platform_name || ''}</h5>
+                        <p class="text-sm text-gray-700 mt-2"><strong class="font-semibold">理由:</strong> ${platform.strategic_reason || ''}</p>
+                        <p class="text-sm text-gray-700 mt-1"><strong class="font-semibold">アプローチ例:</strong> ${platform.approach_example || ''}</p>
+                     </div>`;
+        }
+        if (data.platform_strategy) {
+            html += `<div>
+                        <h4 class="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                           <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-teal-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                           推奨プラットフォームと戦略
+                        </h4>
+                        <div class="space-y-4">
+                            ${renderPlatform(data.platform_strategy.mainstay_platform)}
+                            ${renderPlatform(data.platform_strategy.alternative_platform)}
+                        </div>
+                    </div>`;
+        }
+        html += '</div>';
+        aiResultContainer.innerHTML = html;
+    }
+    
+    document.body.addEventListener('click', (e) => {
+        const icon = e.target.closest('.info-icon');
+        if (icon) {
+            const metricKey = icon.dataset.metric;
+            const data = { ...tooltipData[metricKey] }; // データをコピー
+
+            // 動的にフォーミュラを生成
+            if (metricKey === 'required-budget-d') {
+                switch(modeD_kpi_choice) {
+                    case 'cv': data.formula = '目標CV数 × 推定CPA'; break;
+                    case 'cpa': data.formula = '必要CV数 × 目標CPA'; break;
+                    case 'clicks': data.formula = '目標クリック数 × 推定CPC'; break;
+                    case 'imp': data.formula = '(目標表示回数 × 推定CTR) × 推定CPC'; break;
+                    default: data.formula = 'N/A';
+                }
+            }
+
+            if (tooltip.classList.contains('visible') && tooltip.dataset.currentMetric === metricKey) {
+                tooltip.classList.remove('visible');
+                return;
+            }
+
+            document.getElementById('tooltip-title').textContent = data.title;
+            document.getElementById('tooltip-desc').innerHTML = data.desc;
+            document.getElementById('tooltip-formula').innerHTML = data.formula;
+            
+            const iconRect = icon.getBoundingClientRect();
+            tooltip.classList.add('visible');
+            let top = iconRect.top + window.scrollY - tooltip.offsetHeight - 10;
+            let left = iconRect.left + window.scrollX - (tooltip.offsetWidth / 2) + (iconRect.width / 2);
+            if (top < window.scrollY) {
+                top = iconRect.bottom + window.scrollY + 10;
+            }
+            if (left < 0) left = 5;
+            if (left + tooltip.offsetWidth > window.innerWidth) {
+                left = window.innerWidth - tooltip.offsetWidth - 5;
+            }
+            tooltip.style.top = `${top}px`;
+            tooltip.style.left = `${left}px`;
+            tooltip.dataset.currentMetric = metricKey;
+        } else if (!e.target.closest('#tooltip')) {
+             tooltip.classList.remove('visible');
+        }
+    });
+
+    generateCopyBtn.addEventListener('click', () => handleAIGeneration('copy'));
+    generateTargetingBtn.addEventListener('click', () => handleAIGeneration('targeting'));
+    generateKeywordsBtn.addEventListener('click', () => handleAIGeneration('keywords'));
+
+    initChart();
+    setMode('A');
+    document.getElementById('a-profit-btn').classList.replace('optional-input-btn-inactive', 'optional-input-btn-active');
+    setModeDSubMode('cv');
+    populateCaseStudies();
+    populateBenchmarks();
+    populateOptimizationGuide();
+    populateKnowledge();
+    
+    console.log('%c[Initializer] 完了: アプリケーションの初期化を完了しました。', 'color: purple; font-weight: bold;');
+}
+
+// 初期認証チェックを呼び出してアプリケーションを開始
+checkAuthStatus();
+
+});
+</script>
+
+</body>
+</html>
